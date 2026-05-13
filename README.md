@@ -24,25 +24,25 @@ Copy-paste these into a ScreenConnect backstage PowerShell session:
 
 ```powershell
 # Tekla PowerFab Update
-irm "https://raw.githubusercontent.com/CK-Technology/public-misc/main/TeklaPowerFab/powerfabUp.ps1" | iex
+irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/TeklaPowerFab/powerfabUp.ps1" | iex
 
 # Windows Update (PSWindowsUpdate with logging)
-irm "https://raw.githubusercontent.com/CK-Technology/public-misc/main/winUp.ps1" | iex
+irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/winUp.ps1" | iex
 
 # Windows Update (simple, auto-reboot)
-irm "https://raw.githubusercontent.com/CK-Technology/public-misc/main/UpdateWindows.ps1" | iex
+irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/UpdateWindows.ps1" | iex
 
 # Winget - Upgrade All Packages
-irm "https://raw.githubusercontent.com/CK-Technology/public-misc/main/wingetUp.ps1" | iex
+irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/wingetUp.ps1" | iex
 
 # Enable Windows Defender
-irm "https://raw.githubusercontent.com/CK-Technology/public-misc/main/enableDefender.ps1" | iex
+irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/enableDefender.ps1" | iex
 
 # Bluebeam Revu 21 Update
-irm "https://raw.githubusercontent.com/CK-Technology/public-misc/main/bluebeamUpdates.ps1" | iex
+irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/bluebeamUpdates.ps1" | iex
 
 # FortiClient IPsec VPN Deploy
-irm "https://raw.githubusercontent.com/CK-Technology/public-misc/main/deploy-ipsec.ps1" | iex
+irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/deploy-ipsec.ps1" | iex
 ```
 
 ## Scripts
