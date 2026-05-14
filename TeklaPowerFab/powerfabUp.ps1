@@ -16,8 +16,8 @@ if (!(Test-Path $DestFile)) {
     exit 1
 }
 
-Write-Host "Launching Tekla PowerFab update..."
-Start-Process -FilePath $DestFile -Wait
+Write-Host "Launching Tekla PowerFab update (silent)..."
+Start-Process -FilePath $DestFile -ArgumentList "/S" -Wait
 
-Write-Host "Tekla PowerFab update completed or installer was closed."
+Write-Host "Tekla PowerFab update completed."
 exit 0
