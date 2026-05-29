@@ -43,6 +43,12 @@ irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main
 
 # FortiClient IPsec VPN Deploy
 irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/deploy-ipsec.ps1" | iex
+
+# ScreenConnect Agent Install - Cloud instance
+irm 'https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/screenconnect/cloud/Install-ScreenConnect.ps1' | iex
+
+# ScreenConnect Agent Install - On-prem instance (set server URL in the script first)
+irm 'https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/screenconnect/onprem/Install-ScreenConnect.ps1' | iex
 ```
 
 ## Scripts
@@ -77,12 +83,27 @@ Deploys FortiClient IPsec VPN configuration from an exported XML via GPO startup
 
 > **Note:** Update `$xmlSource`, `$password`, and `$marker` paths to match your environment before deploying.
 
+### screenconnect/cloud/Install-ScreenConnect.ps1
+
+Silent install of the ScreenConnect / ConnectWise Control access agent against the **cloud** instance (`cktech.screenconnect.com`). Downloads the MSI from the instance `Bin` endpoint, validates it is a real MSI (guards against HTML interstitials from hosts like Google Drive), and installs silently via `msiexec /qn`. Requires admin; skips if the agent is already present unless `-Force` is passed. Override the target with `-InstallerUrl`. Logs to `CKTECH-Scripts\screenconnect_install.log`.
+
+### screenconnect/onprem/Install-ScreenConnect.ps1
+
+Same as the cloud installer but targets the **on-prem** instance. Update the default `$InstallerUrl` in the script (currently a `REPLACE-ME` placeholder that the script refuses to run against) once the on-prem server is stood up, or pass `-InstallerUrl` at runtime.
+
+> **Note:** Get the URL from your instance: Access tab → Build → copy the `.msi` download link. Agent installer binaries (`*.exe`/`*.msi`) are git-ignored and must never be committed to this public repo.
+
 ## Repo Structure
 
 ```
 public-misc/
 ├── TeklaPowerFab/
 │   └── powerfabUp.ps1
+├── screenconnect/
+│   ├── cloud/
+│   │   └── Install-ScreenConnect.ps1
+│   └── onprem/
+│       └── Install-ScreenConnect.ps1
 ├── UpdateWindows.ps1
 ├── winUp.ps1
 ├── wingetUp.ps1
