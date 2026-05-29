@@ -1,89 +1,92 @@
 # onprem/Install-ScreenConnect.ps1
-# Silent install of the ScreenConnect / ConnectWise Control agent -- ON-PREM instance.
+# Silent install of the ScreenConnect access agent -- ON-PREM instance.
 #
 # Set the default $InstallerUrl below to your on-prem server's Bin endpoint once
 # the server is stood up (Access tab -> Build -> copy the .msi download link).
 #
-# One-liner (elevated PowerShell / backstage):
+# One-liner (elevated PowerShell / SC backstage runs as SYSTEM):
 #   irm 'https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/screenconnect/onprem/Install-ScreenConnect.ps1' | iex
 #
-# Override the target with -InstallerUrl if needed. Re-run with -Force to reinstall.
+# Wrapped in a function so it is safe to run via `irm | iex` -- uses `return`,
+# never `exit`, so it will not close the host PowerShell window.
 
-param(
-    [string]$InstallerUrl = 'https://REPLACE-ME.cktech.com/Bin/ScreenConnect.ClientSetup.msi?e=Access&y=Guest',
+function Install-ScreenConnectAgent {
+    param(
+        [string]$InstallerUrl = 'https://REPLACE-ME.cktech.com/Bin/ScreenConnect.ClientSetup.msi?e=Access&y=Guest',
+        [switch]$Force
+    )
 
-    [switch]$Force
-)
+    $logFile = "C:\ProgramData\CKScripts\screenconnect_install.log"
+    $msiPath = "$env:TEMP\ScreenConnect.ClientSetup.msi"
 
-$logFile = "C:\ProgramData\CKTECH-Scripts\screenconnect_install.log"
-$msiPath = "$env:TEMP\ScreenConnect.ClientSetup.msi"
-
-function Write-Log {
-    param([string]$Message)
-    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    Add-Content -Path $logFile -Value "$timestamp - $Message"
-    Write-Host "$timestamp - $Message"
-}
-
-try {
-    if (!(Test-Path "C:\ProgramData\CKTECH-Scripts")) {
-        New-Item -Path "C:\ProgramData\CKTECH-Scripts" -ItemType Directory -Force | Out-Null
+    function Write-Log {
+        param([string]$Message)
+        $ts = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+        if (!(Test-Path "C:\ProgramData\CKScripts")) {
+            New-Item -Path "C:\ProgramData\CKScripts" -ItemType Directory -Force | Out-Null
+        }
+        Add-Content -Path $logFile -Value "$ts - $Message"
+        Write-Host "$ts - $Message"
     }
 
     Write-Log "Starting ScreenConnect agent install (on-prem)."
 
-    # Guard -- refuse to run until the on-prem server URL has been configured.
     if ($InstallerUrl -like '*REPLACE-ME*') {
         Write-Log "InstallerUrl not configured. Set the default in onprem/Install-ScreenConnect.ps1 or pass -InstallerUrl. Aborting."
-        exit 1
+        return
     }
 
-    # Require elevation -- msiexec install needs admin.
     $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
         ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-    if (!$isAdmin) {
-        Write-Log "Not running as administrator. Aborting."
-        exit 1
+    if (-not $isAdmin) {
+        Write-Log "NOT elevated. Re-run from an Administrator PowerShell (SC backstage runs as SYSTEM and is fine). Aborting."
+        return
     }
 
-    # Idempotency -- skip if the agent service is already present.
     $existing = Get-Service -ErrorAction SilentlyContinue |
         Where-Object { $_.Name -like 'ScreenConnect Client*' }
-    if ($existing -and !$Force) {
-        Write-Log "ScreenConnect Client service already present ($($existing.Name)). Use -Force to reinstall. Exiting."
-        exit 0
+    if ($existing -and -not $Force) {
+        Write-Log "Already installed ($($existing.Name)). Use -Force to reinstall. Done."
+        return
     }
 
-    Write-Log "Downloading installer from $InstallerUrl"
-    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-    $ProgressPreference = 'SilentlyContinue'
-    Invoke-WebRequest -Uri $InstallerUrl -OutFile $msiPath -UseBasicParsing
+    try {
+        Write-Log "Downloading from $InstallerUrl"
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        $ProgressPreference = 'SilentlyContinue'
+        (New-Object System.Net.WebClient).DownloadFile($InstallerUrl, $msiPath)
+    }
+    catch {
+        Write-Log "Download failed: $($_.Exception.Message)"
+        return
+    }
 
-    # Guard against hosts that return an HTML interstitial instead of the raw
-    # MSI -- a valid MSI starts with the OLE compound-file magic bytes.
+    if (-not (Test-Path $msiPath)) {
+        Write-Log "Installer not found after download. Aborting."
+        return
+    }
+
+    $size = (Get-Item $msiPath).Length
     $bytes = [System.IO.File]::ReadAllBytes($msiPath) | Select-Object -First 2
     if ($bytes[0] -ne 0xD0 -or $bytes[1] -ne 0xCF) {
-        Write-Log "Downloaded file is not a valid MSI (size $((Get-Item $msiPath).Length) bytes). Check the URL/host. Aborting."
-        exit 1
+        Write-Log "Downloaded file is not a valid MSI ($size bytes). Check the URL. Aborting."
+        return
     }
 
-    Write-Log "Download complete ($((Get-Item $msiPath).Length) bytes). Installing silently."
+    Write-Log "Download OK ($size bytes). Installing silently."
     $proc = Start-Process -FilePath "msiexec.exe" `
-        -ArgumentList "/i `"$msiPath`" /qn /norestart" `
+        -ArgumentList "/i `"$msiPath`" /qn /norestart REBOOT=REALLYSUPPRESS" `
         -Wait -PassThru
-    $exitCode = $proc.ExitCode
+    $code = $proc.ExitCode
 
-    if ($exitCode -eq 0 -or $exitCode -eq 3010) {
-        Write-Log "Install succeeded (msiexec exit code $exitCode)."
-        Remove-Item -Path $msiPath -Force -ErrorAction SilentlyContinue
-        exit 0
+    switch ($code) {
+        0    { Write-Log "Install succeeded (exit 0)." }
+        3010 { Write-Log "Install succeeded; reboot required (exit 3010)." }
+        1641 { Write-Log "Install succeeded; installer initiated reboot (exit 1641)." }
+        default { Write-Log "Install FAILED (msiexec exit $code)." }
     }
-    else {
-        Write-Log "Install failed (msiexec exit code $exitCode)."
-        exit $exitCode
-    }
+
+    Remove-Item -Path $msiPath -Force -ErrorAction SilentlyContinue
 }
-catch {
-    Write-Log "Unhandled error: $($_.Exception.Message)"
-    exit 1
-}
+
+Install-ScreenConnectAgent

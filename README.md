@@ -85,7 +85,7 @@ Deploys FortiClient IPsec VPN configuration from an exported XML via GPO startup
 
 ### screenconnect/cloud/Install-ScreenConnect.ps1
 
-Silent install of the ScreenConnect / ConnectWise Control access agent against the **cloud** instance (`cktech.screenconnect.com`). Downloads the MSI from the instance `Bin` endpoint, validates it is a real MSI (guards against HTML interstitials from hosts like Google Drive), and installs silently via `msiexec /qn`. Requires admin; skips if the agent is already present unless `-Force` is passed. Override the target with `-InstallerUrl`. Logs to `CKTECH-Scripts\screenconnect_install.log`.
+Silent install of the ScreenConnect / ConnectWise Control access agent against the **cloud** instance (`cktech.screenconnect.com`). Downloads the MSI from the instance `Bin` endpoint, validates it is a real MSI (guards against HTML interstitials from hosts like Google Drive), and installs silently via `msiexec /qn`. Requires admin; skips if the agent is already present unless `-Force` is passed. Override the target with `-InstallerUrl`. Logs to `CKScripts\screenconnect_install.log`.
 
 ### screenconnect/onprem/Install-ScreenConnect.ps1
 
