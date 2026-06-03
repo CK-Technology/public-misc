@@ -38,10 +38,13 @@ function Install-ScreenConnectAgent {
     # Match THIS instance only (by host in the service path), so other
     # ScreenConnect agents (e.g. the on-prem one) are left untouched.
     $scHost = ([uri]$InstallerUrl).Host
-    $existing = Get-CimInstance Win32_Service -ErrorAction SilentlyContinue |
-        Where-Object { $_.Name -like 'ScreenConnect Client*' -and $_.PathName -like "*$scHost*" }
+    $allSc = @(Get-CimInstance Win32_Service -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -like 'ScreenConnect Client*' })
+    foreach ($s in $allSc) { Write-Log "Found agent: $($s.Name) | $($s.PathName)" }
+    Write-Log "Target host: $scHost"
+    $existing = $allSc | Where-Object { $_.PathName -like "*$scHost*" }
     if ($existing -and -not $Force) {
-        Write-Log "Cloud agent for $scHost already installed ($($existing.Name)). Use -Force to reinstall. Done."
+        Write-Log "Agent for $scHost already installed ($($existing.Name)). Use -Force to reinstall. Done."
         return
     }
 

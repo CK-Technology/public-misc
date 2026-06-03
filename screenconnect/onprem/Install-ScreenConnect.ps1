@@ -1,8 +1,9 @@
 # onprem/Install-ScreenConnect.ps1
 # Silent install of the ScreenConnect access agent -- ON-PREM instance.
 #
-# Set the default $InstallerUrl below to your on-prem server's Bin endpoint once
-# the server is stood up (Access tab -> Build -> copy the .msi download link).
+# $InstallerUrl points at the signed MSI hosted on help.cktechx.com. Must be the
+# .msi (this script validates the MSI header and runs msiexec); the .exe will not
+# work with this flow.
 #
 # One-liner (elevated PowerShell / SC backstage runs as SYSTEM):
 #   irm 'https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/screenconnect/onprem/Install-ScreenConnect.ps1' | iex
@@ -12,7 +13,7 @@
 
 function Install-ScreenConnectAgent {
     param(
-        [string]$InstallerUrl = 'https://REPLACE-ME.cktech.com/Bin/ScreenConnect.ClientSetup.msi?e=Access&y=Guest',
+        [string]$InstallerUrl = 'https://help.cktechx.com/downloads/cktech-screenconnect.msi',
         [switch]$Force
     )
 
@@ -31,11 +32,6 @@ function Install-ScreenConnectAgent {
 
     Write-Log "Starting ScreenConnect agent install (on-prem)."
 
-    if ($InstallerUrl -like '*REPLACE-ME*') {
-        Write-Log "InstallerUrl not configured. Set the default in onprem/Install-ScreenConnect.ps1 or pass -InstallerUrl. Aborting."
-        return
-    }
-
     $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
         ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
     if (-not $isAdmin) {
@@ -45,11 +41,18 @@ function Install-ScreenConnectAgent {
 
     # Match THIS instance only (by host in the service path), so other
     # ScreenConnect agents (e.g. the cloud one) are left untouched.
+    # NOTE: $scHost is the host of the *download* URL (help.cktechx.com), not the
+    # agent's relay host, so this will not match an installed service and the
+    # script will (re)install each run. The Found-agent log lines below show what
+    # is present so this can be re-scoped to the real relay host later if needed.
     $scHost = ([uri]$InstallerUrl).Host
-    $existing = Get-CimInstance Win32_Service -ErrorAction SilentlyContinue |
-        Where-Object { $_.Name -like 'ScreenConnect Client*' -and $_.PathName -like "*$scHost*" }
+    $allSc = @(Get-CimInstance Win32_Service -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -like 'ScreenConnect Client*' })
+    foreach ($s in $allSc) { Write-Log "Found agent: $($s.Name) | $($s.PathName)" }
+    Write-Log "Target host: $scHost"
+    $existing = $allSc | Where-Object { $_.PathName -like "*$scHost*" }
     if ($existing -and -not $Force) {
-        Write-Log "On-prem agent for $scHost already installed ($($existing.Name)). Use -Force to reinstall. Done."
+        Write-Log "Agent for $scHost already installed ($($existing.Name)). Use -Force to reinstall. Done."
         return
     }
 
