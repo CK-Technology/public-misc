@@ -9,12 +9,12 @@
 
 function Install-ScreenConnectAgent {
     param(
-        [string]$InstallerUrl = 'https://cktech.screenconnect.com/Bin/ScreenConnect.ClientSetup.exe?e=Access&y=Guest&c=_WEB&c=&c=&c=&c=&c=&c=&c=',
+        [string]$InstallerUrl = 'https://cktech.screenconnect.com/Bin/ScreenConnect.ClientSetup.msi?e=Access&y=Guest',
         [switch]$Force
     )
 
     $logFile = "C:\ProgramData\CKScripts\screenconnect_install.log"
-    $installerPath = "$env:TEMP\ScreenConnect.ClientSetup.exe"
+    $msiPath = "$env:TEMP\ScreenConnect.ClientSetup.msi"
 
     function Write-Log {
         param([string]$Message)
@@ -48,58 +48,43 @@ function Install-ScreenConnectAgent {
         return
     }
 
-    # Download with curl.exe, which uses the OS Schannel + system certificate
-    # store. That validates ConnectWise's rotated DigiCert chain, where the .NET
-    # Framework WebClient hit "could not establish trust relationship". Falls
-    # back to BITS (WinHTTP) on older boxes without curl.exe.
-    Write-Log "Downloading from $InstallerUrl"
-    $curl = "$env:SystemRoot\System32\curl.exe"
     try {
-        if (Test-Path $curl) {
-            & $curl --fail --location --silent --show-error `
-                --output $installerPath $InstallerUrl
-            if ($LASTEXITCODE -ne 0) { throw "curl.exe exited $LASTEXITCODE" }
-        }
-        else {
-            Start-BitsTransfer -Source $InstallerUrl -Destination $installerPath -ErrorAction Stop
-        }
+        Write-Log "Downloading from $InstallerUrl"
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        $ProgressPreference = 'SilentlyContinue'
+        (New-Object System.Net.WebClient).DownloadFile($InstallerUrl, $msiPath)
     }
     catch {
-        Write-Log "Primary download failed ($($_.Exception.Message)); retrying via BITS."
-        try {
-            Start-BitsTransfer -Source $InstallerUrl -Destination $installerPath -ErrorAction Stop
-        }
-        catch {
-            Write-Log "Download failed: $($_.Exception.Message)"
-            return
-        }
+        Write-Log "Download failed: $($_.Exception.Message)"
+        return
     }
 
-    if (-not (Test-Path $installerPath)) {
+    if (-not (Test-Path $msiPath)) {
         Write-Log "Installer not found after download. Aborting."
         return
     }
 
-    $size = (Get-Item $installerPath).Length
-    $bytes = [System.IO.File]::ReadAllBytes($installerPath) | Select-Object -First 2
-    if ($bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) {
-        Write-Log "Downloaded file is not a valid EXE ($size bytes). Check the URL. Aborting."
+    $size = (Get-Item $msiPath).Length
+    $bytes = [System.IO.File]::ReadAllBytes($msiPath) | Select-Object -First 2
+    if ($bytes[0] -ne 0xD0 -or $bytes[1] -ne 0xCF) {
+        Write-Log "Downloaded file is not a valid MSI ($size bytes). Check the URL. Aborting."
         return
     }
 
     Write-Log "Download OK ($size bytes). Installing silently."
-    # ConnectWise's signed ClientSetup.exe installs the agent unattended when
-    # launched (it wraps msiexec internally), so no extra silent switches needed.
-    $proc = Start-Process -FilePath $installerPath -Wait -PassThru
+    $proc = Start-Process -FilePath "msiexec.exe" `
+        -ArgumentList "/i `"$msiPath`" /qn /norestart REBOOT=REALLYSUPPRESS" `
+        -Wait -PassThru
     $code = $proc.ExitCode
 
     switch ($code) {
         0    { Write-Log "Install succeeded (exit 0)." }
         3010 { Write-Log "Install succeeded; reboot required (exit 3010)." }
-        default { Write-Log "Install FAILED (installer exit $code)." }
+        1641 { Write-Log "Install succeeded; installer initiated reboot (exit 1641)." }
+        default { Write-Log "Install FAILED (msiexec exit $code)." }
     }
 
-    Remove-Item -Path $installerPath -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path $msiPath -Force -ErrorAction SilentlyContinue
 }
 
 Install-ScreenConnectAgent
