@@ -40,6 +40,7 @@ wazuh/
 │       └── README.md
 ├── linux/
 │   ├── install-wazuh-agent.sh
+│   ├── migrate-wazuh-agent.sh
 │   ├── health-check-wazuh-agent.sh
 │   ├── remove-wazuh-agent.sh
 │   └── README.md
