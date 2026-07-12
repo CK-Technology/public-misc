@@ -3,3 +3,11 @@ tasks/
 # ScreenConnect agent installers embed instance connection info -- never commit
 screenconnect/**/*.exe
 screenconnect/**/*.msi
+
+# UniFi adoption credentials -- keep local, never commit (.env.example is fine)
+unifi/**/.env
+**/.env
+
+# Python bytecode cache
+__pycache__/
+*.pyc

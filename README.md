@@ -14,9 +14,9 @@
 
 ## Overview
 
-Collection of PowerShell scripts used across CK Technology managed environments. Designed for remote execution via ScreenConnect backstage commands or GPO deployment against Windows workstations and servers.
+Collection of administration scripts and utilities used across CK Technology managed environments. The bulk are PowerShell for Windows (remote execution via ScreenConnect backstage or GPO), alongside cross-platform Wazuh agent tooling (Linux/macOS) and UniFi provisioning/adoption helpers (Bash/Python).
 
-All scripts that produce logs write to `C:\ProgramData\CKTECH-Scripts\`.
+Windows scripts that produce logs write to `C:\ProgramData\CKTECH-Scripts\`.
 
 ## ScreenConnect Quick Commands
 
@@ -93,6 +93,14 @@ Same as the cloud installer but targets the **on-prem** instance. Update the def
 
 > **Note:** Get the URL from your instance: Access tab → Build → copy the `.msi` download link. Agent installer binaries (`*.exe`/`*.msi`) are git-ignored and must never be committed to this public repo.
 
+### wazuh/
+
+Cross-platform Wazuh agent lifecycle scripts for Linux and macOS. Each platform folder (`linux/`, `macos/`) has an installer, health-check, and removal script that register the agent against the Wazuh manager. See [`wazuh/README.md`](wazuh/README.md) and the per-platform READMEs.
+
+### unifi/
+
+UniFi provisioning and adoption tooling for the self-hosted UniFi OS Server controller. Standalone Bash/Python helpers for DHCP Option 43 encoding, controller health probes, factory-device `set-inform` adoption, and a CrowdSec whitelist, plus discovery docs (DHCP/DNS). Copy `scripts/.env.example` to `.env` (git-ignored) for adoption credentials. See [`unifi/README.md`](unifi/README.md).
+
 ## Repo Structure
 
 ```
@@ -104,6 +112,19 @@ public-misc/
 │   │   └── Install-ScreenConnect.ps1
 │   └── onprem/
 │       └── Install-ScreenConnect.ps1
+├── wazuh/
+│   ├── linux/
+│   │   ├── install-wazuh-agent.sh
+│   │   ├── health-check-wazuh-agent.sh
+│   │   └── remove-wazuh-agent.sh
+│   └── macos/
+│       ├── install-wazuh-agent.sh
+│       ├── health-check-wazuh-agent.sh
+│       └── remove-wazuh-agent.sh
+├── unifi/
+│   ├── crowdsec/
+│   ├── dhcp-option-43/
+│   └── scripts/
 ├── UpdateWindows.ps1
 ├── winUp.ps1
 ├── wingetUp.ps1

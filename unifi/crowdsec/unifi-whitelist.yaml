@@ -1,0 +1,18 @@
+name: ghostctl/unifi-whitelist
+description: "Whitelist UniFi mgmt/inform + Tailscale so legit traffic is never banned"
+# Reference copy. Generate the live one with:
+#   ghostctl crowdsec unifi-exempt generate
+#   ghostctl crowdsec unifi-exempt generate --apply   # writes to s02-enrich
+#
+# Drop this in the parser enrich stage and reload CrowdSec:
+#   /etc/crowdsec/parsers/s02-enrich/unifi-whitelist.yaml
+#   sudo systemctl reload crowdsec
+#
+# Tailor `ip`/`cidr` to your estate via [unifi] exempt_cidrs in config.toml.
+whitelist:
+  reason: "UniFi controller management, inform sources, and Tailscale"
+  ip:
+    - "69.169.98.98"      # unifi.cktechx.com controller / inform source
+  cidr:
+    - "100.64.0.0/10"     # Tailscale CGNAT (admin access)
+    # - "10.20.30.0/24"   # add your mgmt / device VLANs here
