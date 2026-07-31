@@ -41,6 +41,9 @@ irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main
 # Bluebeam Revu 21 Recovery — pilot one workstation at a time
 irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/bluebeamRecovery.ps1" | iex
 
+# Bluebeam Revu 21 Transactional Update — use only after pilot validation
+irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/bluebeamUpdates.ps1" | iex
+
 # FortiClient IPsec VPN Deploy
 irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/deploy-ipsec.ps1" | iex
 
@@ -76,6 +79,10 @@ Re-enables Windows Defender real-time protection, IOAV protection, behavior moni
 ### bluebeamRecovery.ps1
 
 Pilot-only recovery for Revu 21 machines left with an orphaned Windows Installer product. Stages signed prior and current deployment packages before changing the machine, supplies the prior MSI during removal, installs Bluebeam's bundled prerequisites and current MSI, verifies the installed version, and prints MSI failure context automatically. Run on one workstation at a time until validated.
+
+### bluebeamUpdates.ps1
+
+Transactional Revu 21 updater for healthy registered installations. Stages signed current and latest deployment packages, installs bundled prerequisites, re-caches the current MSI source, and lets Windows Installer perform the point-release upgrade with rollback. Refuses machines without a normal Revu registration and retains the current servicing source locally.
 
 ### deploy-ipsec.ps1
 
@@ -130,6 +137,7 @@ public-misc/
 ├── wingetUp.ps1
 ├── enableDefender.ps1
 ├── bluebeamRecovery.ps1
+├── bluebeamUpdates.ps1
 ├── deploy-ipsec.ps1
 └── README.md
 ```
