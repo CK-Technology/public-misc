@@ -69,8 +69,10 @@ function Get-LatestBluebeamVersion {
         Write-Log "Could not fetch from GitHub API: $_" -Level "WARN"
     }
 
-    # Fallback: known latest version (update this periodically)
-    return [version]"21.8.0"
+    # Fallback only when the manifest API is unreachable. Stale values here cause
+    # newer machines to be skipped as "up to date" — verify against
+    # https://support.bluebeam.com/revu/resources/revu-21-release-notes.html
+    return [version]"21.10.0"
 }
 
 function Get-BluebeamDownloadUrl {
