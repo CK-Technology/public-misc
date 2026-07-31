@@ -36,7 +36,10 @@ function Get-InstalledBluebeamVersion {
 
     foreach ($path in $paths) {
         $app = Get-ItemProperty $path -ErrorAction SilentlyContinue |
-               Where-Object { $_.DisplayName -like "*Bluebeam Revu*21*" } |
+               Where-Object {
+                   $_.DisplayName -like "*Bluebeam Revu*" -and
+                   $_.DisplayVersion -match "^21(?:\.|$)"
+               } |
                Select-Object -First 1
 
         if ($app) {
