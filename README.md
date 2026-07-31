@@ -38,6 +38,9 @@ irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main
 # Enable Windows Defender
 irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/enableDefender.ps1" | iex
 
+# Bluebeam Revu 21 Recovery — pilot one workstation at a time
+irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/bluebeamRecovery.ps1" | iex
+
 # FortiClient IPsec VPN Deploy
 irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/deploy-ipsec.ps1" | iex
 
@@ -69,6 +72,10 @@ Locates the winget executable and upgrades all installed packages silently. Logs
 ### enableDefender.ps1
 
 Re-enables Windows Defender real-time protection, IOAV protection, behavior monitoring, and on-access protection via both `Set-MpPreference` and registry keys. Starts the `WinDefend` and `WdNisSvc` services.
+
+### bluebeamRecovery.ps1
+
+Pilot-only recovery for Revu 21 machines left with an orphaned Windows Installer product. Stages signed prior and current deployment packages before changing the machine, supplies the prior MSI during removal, installs Bluebeam's bundled prerequisites and current MSI, verifies the installed version, and prints MSI failure context automatically. Run on one workstation at a time until validated.
 
 ### deploy-ipsec.ps1
 
@@ -122,6 +129,7 @@ public-misc/
 ├── winUp.ps1
 ├── wingetUp.ps1
 ├── enableDefender.ps1
+├── bluebeamRecovery.ps1
 ├── deploy-ipsec.ps1
 └── README.md
 ```
