@@ -1,9 +1,9 @@
 # powerfabUp.ps1
 # Copies Tekla PowerFab update installer locally and runs it.
 
-$SourcePath = "\\Iron-file1\it\Applications\Tekla-Powerfab\2026\TeklaPowerFab2026SP1.exe"
+$SourcePath = "\\Iron-file1\it\Applications\Tekla-Powerfab\2026\TeklaPowerFab2026SP3.exe"
 $DestDir    = "C:\Users\Public\Documents\Tekla\Tekla Powerfab\Update"
-$DestFile   = Join-Path $DestDir "TeklaPowerFab2026SP1.exe"
+$DestFile   = Join-Path $DestDir "TeklaPowerFab2026SP3.exe"
 
 Write-Host "Creating update directory..."
 New-Item -ItemType Directory -Path $DestDir -Force | Out-Null
