@@ -38,11 +38,14 @@ irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main
 # Enable Windows Defender
 irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/enableDefender.ps1" | iex
 
-# Bluebeam Revu 21 Recovery — pilot one workstation at a time
-irm "https://raw.githubusercontent.com/CK-Technology/public-misc/main/bluebeamRecovery.ps1" | iex
+# Bluebeam Revu 21 Diagnostics
+irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/bluebeamdiag.ps1" | iex
 
-# Bluebeam Revu 21 Transactional Update — use only after pilot validation
-irm "https://raw.githubusercontent.com/CK-Technology/public-misc/main/bluebeamUpdates.ps1" | iex
+# Bluebeam Revu 21 Recovery
+irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/bluebeamRecovery.ps1" | iex
+
+# Bluebeam Revu 21 Transactional Update
+irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/bluebeamUpdates.ps1" | iex
 
 # FortiClient IPsec VPN Deploy
 irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/deploy-ipsec.ps1" | iex
@@ -75,6 +78,10 @@ Locates the winget executable and upgrades all installed packages silently. Logs
 ### enableDefender.ps1
 
 Re-enables Windows Defender real-time protection, IOAV protection, behavior monitoring, and on-access protection via both `Set-MpPreference` and registry keys. Starts the `WinDefend` and `WdNisSvc` services.
+
+### bluebeamdiag.ps1
+
+Read-only Windows Installer state diagnostic for Revu 21. Makes no changes -- never writes the registry, never calls `msiexec`. Reports Add/Remove Programs entries in both registry nodes, Windows Installer product registrations across **all** user contexts (including ones with missing `InstallProperties` that the other two scripts skip silently), whether each `LocalPackage` cached MSI still exists on disk, and the `HKCR:\Installer\UpgradeCodes` hive that neither other script reads. Cross-references everything against the vendor's published Revu 21 ProductCode table to name the exact residue blocking a reinstall. Run this first on any failing machine and send the log from `CKScripts\Logs\BluebeamDiag.log`.
 
 ### bluebeamRecovery.ps1
 
@@ -136,6 +143,7 @@ public-misc/
 ├── winUp.ps1
 ├── wingetUp.ps1
 ├── enableDefender.ps1
+├── bluebeamdiag.ps1
 ├── bluebeamRecovery.ps1
 ├── bluebeamUpdates.ps1
 ├── deploy-ipsec.ps1
