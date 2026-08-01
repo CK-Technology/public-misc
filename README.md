@@ -47,6 +47,12 @@ irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main
 # Bluebeam Revu 21 Transactional Update
 irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/bluebeamUpdates.ps1" | iex
 
+# Bluebeam Revu 21 Orphan Cleanup (dry run)
+irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/bluebeamclean.ps1" | iex
+
+# Bluebeam Revu 21 Orphan Cleanup (apply)
+$env:BBCLEAN_APPLY='1'; irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/bluebeamclean.ps1" | iex
+
 # FortiClient IPsec VPN Deploy
 irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/deploy-ipsec.ps1" | iex
 
@@ -90,6 +96,10 @@ Pilot-only recovery for Revu 21 machines left with an orphaned Windows Installer
 ### bluebeamUpdates.ps1
 
 Transactional Revu 21 updater for healthy registered installations. Stages signed current and latest deployment packages, installs bundled prerequisites, re-caches the current MSI source, and lets Windows Installer perform the point-release upgrade with rollback. Refuses machines without a normal Revu registration and retains the current servicing source locally.
+
+### bluebeamclean.ps1
+
+Clears the orphaned Revu 21 Windows Installer registration that makes every reinstall fail with `1612` -> `1714` -> `1603`, then installs Revu from a staged MSI. Only ProductCodes published by Bluebeam for Revu 21 are eligible for removal, and only when the product has no `InstallProperties`/`LocalPackage` -- a healthy install is never touched. Removes traces from `Classes\Installer\Products`, `Features`, the `UpgradeCodes` hive (value-level), `Uninstall`, and `UserData`, exporting each key to a `.reg` under `CKScripts\RegistryBackup\<timestamp>\` first, then verifies the residue is gone. Picks its install source by reading `ProductVersion` out of each staged MSI database rather than trusting folder names. **Dry run by default** -- set `$env:BBCLEAN_APPLY='1'` to apply. Run `bluebeamdiag.ps1` first.
 
 ### deploy-ipsec.ps1
 
@@ -146,6 +156,7 @@ public-misc/
 ├── bluebeamdiag.ps1
 ├── bluebeamRecovery.ps1
 ├── bluebeamUpdates.ps1
+├── bluebeamclean.ps1
 ├── deploy-ipsec.ps1
 └── README.md
 ```
