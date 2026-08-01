@@ -18,14 +18,14 @@ Collection of administration scripts and utilities used across CK Technology man
 
 Windows scripts that produce logs write to `C:\ProgramData\CKTECH-Scripts\`.
 
-## ScreenConnect Quick Commands
+## One-Liners
 
-Copy-paste these into a ScreenConnect backstage PowerShell session:
+Copy-paste into an elevated PowerShell session (ScreenConnect backstage, RDP, or local).
+All run as `irm <url> | iex` and require administrative privileges.
+
+### Windows Updates
 
 ```powershell
-# Tekla PowerFab Update
-irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/TeklaPowerFab/powerfabUp.ps1" | iex
-
 # Windows Update (PSWindowsUpdate with logging)
 irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/winUp.ps1" | iex
 
@@ -34,33 +34,54 @@ irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main
 
 # Winget - Upgrade All Packages
 irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/wingetUp.ps1" | iex
+```
 
-# Enable Windows Defender
-irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/enableDefender.ps1" | iex
+### Bluebeam Revu 21
 
-# Bluebeam Revu 21 Diagnostics
+Run the diagnostic first. The cleanup is dry run unless `BBCLEAN_APPLY=1`.
+
+```powershell
+# Diagnostics
 irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/bluebeamdiag.ps1" | iex
 
-# Bluebeam Revu 21 Recovery
-irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/bluebeamRecovery.ps1" | iex
-
-# Bluebeam Revu 21 Transactional Update
-irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/bluebeamUpdates.ps1" | iex
-
-# Bluebeam Revu 21 Orphan Cleanup (dry run)
+# Orphan Cleanup (dry run)
 irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/bluebeamclean.ps1" | iex
 
-# Bluebeam Revu 21 Orphan Cleanup (apply)
+# Orphan Cleanup (apply)
 $env:BBCLEAN_APPLY='1'; irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/bluebeamclean.ps1" | iex
+
+# Recovery
+irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/bluebeamRecovery.ps1" | iex
+
+# Transactional Update
+irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/bluebeamUpdates.ps1" | iex
+```
+
+### Application Deployment
+
+```powershell
+# Tekla PowerFab Update
+irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/TeklaPowerFab/powerfabUp.ps1" | iex
 
 # FortiClient IPsec VPN Deploy
 irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/deploy-ipsec.ps1" | iex
+```
 
-# ScreenConnect Agent Install - Cloud instance
-irm 'https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/screenconnect/cloud/Install-ScreenConnect.ps1' | iex
+### Security
 
-# ScreenConnect Agent Install - On-prem instance (set server URL in the script first)
-irm 'https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/screenconnect/onprem/Install-ScreenConnect.ps1' | iex
+```powershell
+# Enable Windows Defender
+irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/enableDefender.ps1" | iex
+```
+
+### ScreenConnect Agent
+
+```powershell
+# Cloud instance
+irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/screenconnect/cloud/Install-ScreenConnect.ps1" | iex
+
+# On-prem instance (set server URL in the script first)
+irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/screenconnect/onprem/Install-ScreenConnect.ps1" | iex
 ```
 
 ## Scripts

@@ -211,6 +211,22 @@ function Invoke-BluebeamDiagnostic {
         }
     }
 
+    Write-Report ''
+    Write-Report 'Features hive - a separate key under the same ProductCode. Clearing'
+    Write-Report 'Products alone leaves this behind.'
+    Write-Report ''
+    foreach ($featureKey in Get-ChildItem -Path 'Registry::HKEY_CLASSES_ROOT\Installer\Features' -ErrorAction SilentlyContinue) {
+        $productCode = ConvertFrom-PackedGuid -Packed $featureKey.PSChildName
+        if (-not $productCode) { continue }
+        if (-not $knownProducts.Contains($productCode)) { continue }
+        $hasUserData = $userDataProducts | Where-Object { $_.ProductCode -eq $productCode }
+        $state = if ($hasUserData) { 'installed' } else { '*** ORPHAN ***' }
+        Write-Report "  $productCode  $($knownProducts[$productCode])  $state"
+        if (-not $hasUserData) {
+            $findings.Add("ORPHAN FEATURES KEY: $productCode has a HKCR\Installer\Features key with no product registration. This is separate from the Products key and is missed by any cleanup that only clears Products.")
+        }
+    }
+
     # ------------------------------------------------------------------
     Write-Section '4. CLASSES INSTALLER HIVE - UpgradeCodes (dangling references)'
     Write-Report 'Neither bluebeamRecovery.ps1 nor bluebeamUpdates.ps1 reads this hive.'
@@ -357,7 +373,7 @@ function Invoke-BluebeamDiagnostic {
     }
 
     # ------------------------------------------------------------------
-    Write-Section '7. RECENT WINDOWS INSTALLER LOGS'
+    Write-Section '8. RECENT WINDOWS INSTALLER LOGS'
     $ckLogs = 'C:\ProgramData\CKScripts\Logs'
     if (Test-Path -LiteralPath $ckLogs) {
         Get-ChildItem -LiteralPath $ckLogs -Filter '*.log' -ErrorAction SilentlyContinue |
