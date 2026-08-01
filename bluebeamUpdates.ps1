@@ -51,12 +51,31 @@ function Invoke-BluebeamUpdate {
     function Get-WindowsInstallerRevuProducts {
         $installer = New-Object -ComObject WindowsInstaller.Installer
         try {
-            foreach ($product in @($installer.ProductsEx('', '', 7))) {
+            $products = $installer.GetType().InvokeMember(
+                'ProductsEx',
+                [Reflection.BindingFlags]::GetProperty,
+                $null,
+                $installer,
+                @('', '', 4)
+            )
+            foreach ($product in @($products)) {
                 try {
-                    $name = [string]$product.InstallProperty('InstalledProductName')
-                    $versionString = [string]$product.InstallProperty('VersionString')
-                    $productCode = [string]$product.ProductCode
-                    $context = [int]$product.Context
+                    $name = [string]$product.GetType().InvokeMember(
+                        'InstallProperty', [Reflection.BindingFlags]::GetProperty,
+                        $null, $product, @('ProductName')
+                    )
+                    $versionString = [string]$product.GetType().InvokeMember(
+                        'InstallProperty', [Reflection.BindingFlags]::GetProperty,
+                        $null, $product, @('VersionString')
+                    )
+                    $productCode = [string]$product.GetType().InvokeMember(
+                        'ProductCode', [Reflection.BindingFlags]::GetProperty,
+                        $null, $product, $null
+                    )
+                    $context = [int]$product.GetType().InvokeMember(
+                        'Context', [Reflection.BindingFlags]::GetProperty,
+                        $null, $product, $null
+                    )
 
                     if ($name -notlike 'Bluebeam Revu*' -or $versionString -notmatch '^21(?:\.|$)') {
                         continue
@@ -93,13 +112,28 @@ function Invoke-BluebeamUpdate {
         $view = $null
         $record = $null
         try {
-            $database = $installer.OpenDatabase($Path, 0)
+            $database = $installer.GetType().InvokeMember(
+                'OpenDatabase', [Reflection.BindingFlags]::InvokeMethod,
+                $null, $installer, @($Path, 0)
+            )
             $query = "SELECT ``Value`` FROM ``Property`` WHERE ``Property``='$Property'"
-            $view = $database.OpenView($query)
-            $view.Execute()
-            $record = $view.Fetch()
+            $view = $database.GetType().InvokeMember(
+                'OpenView', [Reflection.BindingFlags]::InvokeMethod,
+                $null, $database, @($query)
+            )
+            [void]$view.GetType().InvokeMember(
+                'Execute', [Reflection.BindingFlags]::InvokeMethod,
+                $null, $view, $null
+            )
+            $record = $view.GetType().InvokeMember(
+                'Fetch', [Reflection.BindingFlags]::InvokeMethod,
+                $null, $view, $null
+            )
             if (-not $record) { throw "MSI property $Property is missing." }
-            return [string]$record.StringData(1)
+            return [string]$record.GetType().InvokeMember(
+                'StringData', [Reflection.BindingFlags]::GetProperty,
+                $null, $record, @(1)
+            )
         }
         finally {
             if ($record) { [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($record) }
