@@ -78,7 +78,7 @@ Re-enables Windows Defender real-time protection, IOAV protection, behavior moni
 
 ### bluebeamRecovery.ps1
 
-Pilot-only recovery for Revu 21 machines left with an orphaned Windows Installer product. Stages signed prior and current deployment packages before changing the machine, supplies the prior MSI during removal, installs Bluebeam's bundled prerequisites and current MSI, verifies the installed version, and prints MSI failure context automatically. Run on one workstation at a time until validated.
+Pilot-only recovery for Revu 21 machines left with an orphaned Windows Installer product. It discovers the authoritative Windows Installer ProductCode, stages and verifies the exact matching signed source MSI, repairs and re-caches that product, then invokes the current MSI as a transactional upgrade. It never explicitly uninstalls Revu, verifies the installed version, and prints MSI failure context automatically. Run on one workstation at a time until validated.
 
 ### bluebeamUpdates.ps1
 

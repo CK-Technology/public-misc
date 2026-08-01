@@ -48,6 +48,67 @@ function Invoke-BluebeamUpdate {
             Select-Object -First 1
     }
 
+    function Get-WindowsInstallerRevuProducts {
+        $installer = New-Object -ComObject WindowsInstaller.Installer
+        try {
+            foreach ($product in @($installer.ProductsEx('', '', 7))) {
+                try {
+                    $name = [string]$product.InstallProperty('InstalledProductName')
+                    $versionString = [string]$product.InstallProperty('VersionString')
+                    $productCode = [string]$product.ProductCode
+                    $context = [int]$product.Context
+
+                    if ($name -notlike 'Bluebeam Revu*' -or $versionString -notmatch '^21(?:\.|$)') {
+                        continue
+                    }
+                    if ($productCode -notmatch '^\{[0-9A-Fa-f-]{36}\}$') {
+                        throw "Windows Installer returned an invalid ProductCode for $name $versionString."
+                    }
+
+                    [pscustomobject]@{
+                        ProductCode = $productCode
+                        Name        = $name
+                        Version     = [version]$versionString
+                        Context     = $context
+                    }
+                }
+                catch {
+                    Write-UpdateLog "Could not inspect one Windows Installer product: $($_.Exception.Message)" -Level WARN
+                }
+            }
+        }
+        finally {
+            [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($installer)
+        }
+    }
+
+    function Get-MsiProperty {
+        param(
+            [Parameter(Mandatory)] [string]$Path,
+            [Parameter(Mandatory)] [ValidateSet('ProductCode', 'ProductVersion')] [string]$Property
+        )
+
+        $installer = New-Object -ComObject WindowsInstaller.Installer
+        $database = $null
+        $view = $null
+        $record = $null
+        try {
+            $database = $installer.OpenDatabase($Path, 0)
+            $query = "SELECT ``Value`` FROM ``Property`` WHERE ``Property``='$Property'"
+            $view = $database.OpenView($query)
+            $view.Execute()
+            $record = $view.Fetch()
+            if (-not $record) { throw "MSI property $Property is missing." }
+            return [string]$record.StringData(1)
+        }
+        finally {
+            if ($record) { [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($record) }
+            if ($view) { [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($view) }
+            if ($database) { [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($database) }
+            [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($installer)
+        }
+    }
+
     function Get-LatestRevuVersion {
         $manifestUrl = 'https://api.github.com/repos/microsoft/winget-pkgs/contents/manifests/b/Bluebeam/Revu/21'
         try {
@@ -113,10 +174,16 @@ function Invoke-BluebeamUpdate {
         }
 
         Test-ValidSignature -Path $msi.FullName -Description "Revu $versionString MSI"
+        $msiProductCode = Get-MsiProperty -Path $msi.FullName -Property ProductCode
+        $msiVersion = [version](Get-MsiProperty -Path $msi.FullName -Property ProductVersion)
+        if ((Get-VersionString -Version $msiVersion) -ne $versionString) {
+            throw "Staged MSI version $msiVersion does not match requested version $versionString."
+        }
         [pscustomobject]@{
             Version     = $Version
             MsiPath     = $msi.FullName
             ExtractRoot = $extractRoot
+            ProductCode = $msiProductCode
         }
     }
 
@@ -128,6 +195,7 @@ function Invoke-BluebeamUpdate {
         if ($failure) {
             Write-UpdateLog "Windows Installer failure context from $MsiLogPath" -Level ERROR
             @($failure.Context.PreContext) + @($failure.Line) + @($failure.Context.PostContext) |
+                Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
                 ForEach-Object { Write-UpdateLog $_ -Level ERROR }
         }
     }
@@ -178,8 +246,20 @@ function Invoke-BluebeamUpdate {
     }
 
     $installedVersion = [version]($installedApp.DisplayVersion)
+    $installerProducts = @(Get-WindowsInstallerRevuProducts)
+    if ($installerProducts.Count -ne 1) {
+        throw "Expected exactly one Windows Installer Revu 21 product; found $($installerProducts.Count). Use bluebeamRecovery.ps1 instead."
+    }
+    $installerProduct = $installerProducts[0]
+    if ($installerProduct.Context -ne 4) {
+        throw "Revu is registered in unsupported Windows Installer context $($installerProduct.Context); no changes made."
+    }
+    if ($installerProduct.Version -ne $installedVersion) {
+        throw "Registry version $installedVersion does not match Windows Installer version $($installerProduct.Version). Use bluebeamRecovery.ps1 instead."
+    }
+
     $latestVersion = Get-LatestRevuVersion
-    Write-UpdateLog "Installed version: $installedVersion; latest version: $latestVersion"
+    Write-UpdateLog "Installed version: $installedVersion; ProductCode $($installerProduct.ProductCode); latest version: $latestVersion"
     if ($installedVersion -ge $latestVersion) {
         Write-UpdateLog 'Bluebeam Revu is already current; no changes made.'
         return
@@ -193,6 +273,9 @@ function Invoke-BluebeamUpdate {
     # Stage and validate both packages before servicing the existing product.
     $installedPackage = Get-RevuPackage -Version $installedVersion
     $latestPackage = Get-RevuPackage -Version $latestVersion
+    if ($installedPackage.ProductCode -ne $installerProduct.ProductCode) {
+        throw "Exact-source validation failed: registered ProductCode $($installerProduct.ProductCode), staged MSI ProductCode $($installedPackage.ProductCode). No servicing attempted."
+    }
     Install-RevuPrerequisites -Package $latestPackage
 
     'Revu', 'Stapler', 'PbMngr5', 'BBPrint' | ForEach-Object {

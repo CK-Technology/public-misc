@@ -4,9 +4,10 @@
     Pilot recovery for damaged Bluebeam Revu 21 installations.
 .DESCRIPTION
     Stages the exact prior and current deployment packages before changing the
-    machine, supplies the prior MSI to remove an orphaned Windows Installer
-    product, installs the bundled prerequisites, installs the current Revu MSI,
-    and verifies the result. Intended for one-workstation-at-a-time validation.
+    machine, re-caches and repairs the orphaned Windows Installer product from
+    its exact MSI, installs the bundled prerequisites, invokes the current Revu
+    MSI as a transactional upgrade, and verifies the result. Intended for
+    one-workstation-at-a-time validation.
 #>
 
 function Invoke-BluebeamRecovery {
@@ -17,7 +18,6 @@ function Invoke-BluebeamRecovery {
     $ProgressPreference = 'SilentlyContinue'
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-    $damagedFleetVersion = [version]'21.8.0'
     $fallbackLatestVersion = [version]'21.10.0'
     $dataRoot = 'C:\ProgramData\CKScripts'
     $packageRoot = Join-Path $dataRoot 'BluebeamPackages'
@@ -51,6 +51,70 @@ function Invoke-BluebeamRecovery {
             } |
             Sort-Object { [version]$_.DisplayVersion } -Descending |
             Select-Object -First 1
+    }
+
+    function Get-WindowsInstallerRevuProducts {
+        $installer = New-Object -ComObject WindowsInstaller.Installer
+        try {
+            foreach ($product in @($installer.ProductsEx('', '', 7))) {
+                try {
+                    $name = [string]$product.InstallProperty('InstalledProductName')
+                    $versionString = [string]$product.InstallProperty('VersionString')
+                    $productCode = [string]$product.ProductCode
+                    $context = [int]$product.Context
+
+                    if ($name -notlike 'Bluebeam Revu*' -or $versionString -notmatch '^21(?:\.|$)') {
+                        continue
+                    }
+                    if ($productCode -notmatch '^\{[0-9A-Fa-f-]{36}\}$') {
+                        throw "Windows Installer returned an invalid ProductCode for $name $versionString."
+                    }
+
+                    [pscustomobject]@{
+                        ProductCode = $productCode
+                        Name        = $name
+                        Version     = [version]$versionString
+                        Context     = $context
+                        UserSid     = [string]$product.UserSid
+                    }
+                }
+                catch {
+                    Write-RecoveryLog "Could not inspect one Windows Installer product: $($_.Exception.Message)" -Level WARN
+                }
+            }
+        }
+        finally {
+            [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($installer)
+        }
+    }
+
+    function Get-MsiProperty {
+        param(
+            [Parameter(Mandatory)] [string]$Path,
+            [Parameter(Mandatory)] [ValidateSet('ProductCode', 'ProductVersion')] [string]$Property
+        )
+
+        $installer = New-Object -ComObject WindowsInstaller.Installer
+        $database = $null
+        $view = $null
+        $record = $null
+        try {
+            $database = $installer.OpenDatabase($Path, 0)
+            $query = "SELECT ``Value`` FROM ``Property`` WHERE ``Property``='$Property'"
+            $view = $database.OpenView($query)
+            $view.Execute()
+            $record = $view.Fetch()
+            if (-not $record) {
+                throw "MSI property $Property is missing."
+            }
+            return [string]$record.StringData(1)
+        }
+        finally {
+            if ($record) { [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($record) }
+            if ($view) { [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($view) }
+            if ($database) { [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($database) }
+            [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($installer)
+        }
     }
 
     function Get-LatestRevuVersion {
@@ -104,11 +168,17 @@ function Invoke-BluebeamRecovery {
             Select-Object -First 1
         if ($existingMsi) {
             Test-ValidSignature -Path $existingMsi.FullName -Description "Staged Revu $versionString MSI"
+            $msiProductCode = Get-MsiProperty -Path $existingMsi.FullName -Property ProductCode
+            $msiVersion = [version](Get-MsiProperty -Path $existingMsi.FullName -Property ProductVersion)
+            if ((Get-VersionString -Version $msiVersion) -ne $versionString) {
+                throw "Staged MSI version $msiVersion does not match requested version $versionString."
+            }
             Write-RecoveryLog "Using staged Revu $versionString package at $($existingMsi.FullName)"
             return [pscustomobject]@{
                 Version     = $Version
                 MsiPath     = $existingMsi.FullName
                 ExtractRoot = $extractRoot
+                ProductCode = $msiProductCode
             }
         }
 
@@ -132,10 +202,16 @@ function Invoke-BluebeamRecovery {
         }
 
         Test-ValidSignature -Path $msiFiles[0].FullName -Description "Revu $versionString MSI"
+        $msiProductCode = Get-MsiProperty -Path $msiFiles[0].FullName -Property ProductCode
+        $msiVersion = [version](Get-MsiProperty -Path $msiFiles[0].FullName -Property ProductVersion)
+        if ((Get-VersionString -Version $msiVersion) -ne $versionString) {
+            throw "Downloaded MSI version $msiVersion does not match requested version $versionString."
+        }
         return [pscustomobject]@{
             Version     = $Version
             MsiPath     = $msiFiles[0].FullName
             ExtractRoot = $extractRoot
+            ProductCode = $msiProductCode
         }
     }
 
@@ -151,6 +227,7 @@ function Invoke-BluebeamRecovery {
         if ($failure) {
             Write-RecoveryLog "Windows Installer failure context from $MsiLogPath" -Level ERROR
             @($failure.Context.PreContext) + @($failure.Line) + @($failure.Context.PostContext) |
+                Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
                 ForEach-Object { Write-RecoveryLog $_ -Level ERROR }
         }
     }
@@ -233,15 +310,30 @@ function Invoke-BluebeamRecovery {
         throw 'At least 16 GB of free system-drive space is required to stage both deployment packages safely.'
     }
 
-    $installedApp = Get-InstalledRevu
-    $sourceVersion = if ($installedApp) { [version]($installedApp.DisplayVersion) } else { $damagedFleetVersion }
-    $latestVersion = Get-LatestRevuVersion
-    Write-RecoveryLog "Prior source version: $sourceVersion; latest version: $latestVersion"
+    $registeredProducts = @(Get-WindowsInstallerRevuProducts)
+    if ($registeredProducts.Count -ne 1) {
+        throw "Expected exactly one Windows Installer Revu 21 product; found $($registeredProducts.Count). Refusing an ambiguous recovery."
+    }
 
-    # No MSI operation occurs until both full, signed packages are staged.
-    $sourcePackage = Get-RevuPackage -Version $sourceVersion
-    $latestPackage = if ($latestVersion -eq $sourceVersion) {
-        $sourcePackage
+    foreach ($product in $registeredProducts) {
+        if ($product.Context -ne 4) {
+            throw "Revu $($product.Version) $($product.ProductCode) is registered in unsupported Windows Installer context $($product.Context); no changes made."
+        }
+        Write-RecoveryLog "Windows Installer product: $($product.Name) $($product.Version), ProductCode $($product.ProductCode), Context $($product.Context)"
+    }
+
+    $latestVersion = Get-LatestRevuVersion
+    Write-RecoveryLog "Latest version: $latestVersion"
+
+    # No MSI operation occurs until every exact source package and the current
+    # signed package are staged.
+    $sourcePackages = @{}
+    foreach ($sourceVersion in @($registeredProducts.Version | Sort-Object -Unique)) {
+        $sourcePackages[(Get-VersionString -Version $sourceVersion)] = Get-RevuPackage -Version $sourceVersion
+    }
+    $latestKey = Get-VersionString -Version $latestVersion
+    $latestPackage = if ($sourcePackages.ContainsKey($latestKey)) {
+        $sourcePackages[$latestKey]
     }
     else {
         Get-RevuPackage -Version $latestVersion
@@ -253,12 +345,22 @@ function Invoke-BluebeamRecovery {
             Stop-Process -Force -ErrorAction SilentlyContinue
     }
 
-    $uninstallLog = Join-Path $logRoot 'BluebeamRecovery-Uninstall.log'
-    Invoke-MsiExec -Operation "Remove orphaned/current Revu $sourceVersion" `
-        -MsiLogPath $uninstallLog -AllowedExitCodes @(0, 1605, 1614, 1641, 3010) -Arguments @(
-            '/x', "`"$($sourcePackage.MsiPath)`"", '/qn', '/norestart',
-            '/l*v', "`"$uninstallLog`"", 'IGNORE_RBT=1', 'REBOOT=ReallySuppress'
-        )
+    foreach ($product in $registeredProducts) {
+        $versionKey = Get-VersionString -Version $product.Version
+        $sourcePackage = $sourcePackages[$versionKey]
+        if ($sourcePackage.ProductCode -ne $product.ProductCode) {
+            throw "Exact-source validation failed for Revu ${versionKey}: registered ProductCode $($product.ProductCode), staged MSI ProductCode $($sourcePackage.ProductCode). No uninstall attempted."
+        }
+
+        # Repair and re-cache the exact registered release. The latest MSI then
+        # owns replacement as one Windows Installer transaction.
+        $recacheLog = Join-Path $logRoot "BluebeamRecovery-Recache-$versionKey.log"
+        Invoke-MsiExec -Operation "Re-cache Revu $($product.Version) $($product.ProductCode)" `
+            -MsiLogPath $recacheLog -Arguments @(
+                '/fvomus', "`"$($sourcePackage.MsiPath)`"", '/qn', '/norestart',
+                '/l*v', "`"$recacheLog`"", 'IGNORE_RBT=1', 'REBOOT=ReallySuppress'
+            )
+    }
 
     $installLog = Join-Path $logRoot 'BluebeamRecovery-Install.log'
     Invoke-MsiExec -Operation "Install Revu $latestVersion" -MsiLogPath $installLog -Arguments @(
