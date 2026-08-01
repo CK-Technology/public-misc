@@ -49,55 +49,37 @@ function Invoke-BluebeamUpdate {
     }
 
     function Get-WindowsInstallerRevuProducts {
-        $installer = New-Object -ComObject WindowsInstaller.Installer
-        try {
-            $products = $installer.GetType().InvokeMember(
-                'ProductsEx',
-                [Reflection.BindingFlags]::GetProperty,
-                $null,
-                $installer,
-                @('', '', 4)
-            )
-            foreach ($product in @($products)) {
-                try {
-                    $name = [string]$product.GetType().InvokeMember(
-                        'InstallProperty', [Reflection.BindingFlags]::GetProperty,
-                        $null, $product, @('ProductName')
-                    )
-                    $versionString = [string]$product.GetType().InvokeMember(
-                        'InstallProperty', [Reflection.BindingFlags]::GetProperty,
-                        $null, $product, @('VersionString')
-                    )
-                    $productCode = [string]$product.GetType().InvokeMember(
-                        'ProductCode', [Reflection.BindingFlags]::GetProperty,
-                        $null, $product, $null
-                    )
-                    $context = [int]$product.GetType().InvokeMember(
-                        'Context', [Reflection.BindingFlags]::GetProperty,
-                        $null, $product, $null
-                    )
-
-                    if ($name -notlike 'Bluebeam Revu*' -or $versionString -notmatch '^21(?:\.|$)') {
-                        continue
-                    }
-                    if ($productCode -notmatch '^\{[0-9A-Fa-f-]{36}\}$') {
-                        throw "Windows Installer returned an invalid ProductCode for $name $versionString."
-                    }
-
-                    [pscustomobject]@{
-                        ProductCode = $productCode
-                        Name        = $name
-                        Version     = [version]$versionString
-                        Context     = $context
-                    }
-                }
-                catch {
-                    Write-UpdateLog "Could not inspect one Windows Installer product: $($_.Exception.Message)" -Level WARN
-                }
+        $installerProductsRoot = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Installer\UserData\S-1-5-18\Products'
+        foreach ($productKey in Get-ChildItem -Path $installerProductsRoot -ErrorAction Stop) {
+            $properties = Get-ItemProperty -Path (Join-Path $productKey.PSPath 'InstallProperties') `
+                -ErrorAction SilentlyContinue
+            if (-not $properties -or
+                $properties.DisplayName -notlike 'Bluebeam Revu*' -or
+                $properties.DisplayVersion -notmatch '^21(?:\.|$)') {
+                continue
             }
-        }
-        finally {
-            [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($installer)
+
+            $packedCode = [string]$productKey.PSChildName
+            if ($packedCode -notmatch '^[0-9A-Fa-f]{32}$') {
+                throw "Invalid packed Windows Installer product code: $packedCode."
+            }
+            $tail = for ($index = 16; $index -lt 32; $index += 2) {
+                $packedCode[$index + 1]
+                $packedCode[$index]
+            }
+            $productCode = '{{{0}-{1}-{2}-{3}-{4}}}' -f `
+                (-join $packedCode[7..0]),
+                (-join $packedCode[11..8]),
+                (-join $packedCode[15..12]),
+                (-join $tail[0..3]),
+                (-join $tail[4..15])
+
+            [pscustomobject]@{
+                ProductCode = $productCode.ToUpperInvariant()
+                Name        = [string]$properties.DisplayName
+                Version     = [version]$properties.DisplayVersion
+                Context     = 4
+            }
         }
     }
 
@@ -107,40 +89,58 @@ function Invoke-BluebeamUpdate {
             [Parameter(Mandatory)] [ValidateSet('ProductCode', 'ProductVersion')] [string]$Property
         )
 
-        $installer = New-Object -ComObject WindowsInstaller.Installer
-        $database = $null
-        $view = $null
-        $record = $null
-        try {
-            $database = $installer.GetType().InvokeMember(
-                'OpenDatabase', [Reflection.BindingFlags]::InvokeMethod,
-                $null, $installer, @($Path, 0)
-            )
-            $query = "SELECT ``Value`` FROM ``Property`` WHERE ``Property``='$Property'"
-            $view = $database.GetType().InvokeMember(
-                'OpenView', [Reflection.BindingFlags]::InvokeMethod,
-                $null, $database, @($query)
-            )
-            [void]$view.GetType().InvokeMember(
-                'Execute', [Reflection.BindingFlags]::InvokeMethod,
-                $null, $view, $null
-            )
-            $record = $view.GetType().InvokeMember(
-                'Fetch', [Reflection.BindingFlags]::InvokeMethod,
-                $null, $view, $null
-            )
-            if (-not $record) { throw "MSI property $Property is missing." }
-            return [string]$record.GetType().InvokeMember(
-                'StringData', [Reflection.BindingFlags]::GetProperty,
-                $null, $record, @(1)
-            )
+        if (-not ('CKBluebeam.NativeMsi' -as [type])) {
+            Add-Type -TypeDefinition @'
+using System;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+using System.Text;
+
+namespace CKBluebeam {
+    public static class NativeMsi {
+        [DllImport("msi.dll", CharSet = CharSet.Unicode)]
+        private static extern uint MsiOpenDatabase(string path, IntPtr persist, out IntPtr database);
+        [DllImport("msi.dll", CharSet = CharSet.Unicode)]
+        private static extern uint MsiDatabaseOpenView(IntPtr database, string query, out IntPtr view);
+        [DllImport("msi.dll")]
+        private static extern uint MsiViewExecute(IntPtr view, IntPtr record);
+        [DllImport("msi.dll")]
+        private static extern uint MsiViewFetch(IntPtr view, out IntPtr record);
+        [DllImport("msi.dll", CharSet = CharSet.Unicode)]
+        private static extern uint MsiRecordGetString(IntPtr record, uint field, StringBuilder value, ref uint size);
+        [DllImport("msi.dll")]
+        private static extern uint MsiCloseHandle(IntPtr handle);
+
+        private static void Check(uint result, string operation) {
+            if (result != 0) throw new Win32Exception((int)result, operation + " failed");
         }
-        finally {
-            if ($record) { [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($record) }
-            if ($view) { [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($view) }
-            if ($database) { [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($database) }
-            [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($installer)
+
+        public static string GetProperty(string path, string property) {
+            IntPtr database = IntPtr.Zero;
+            IntPtr view = IntPtr.Zero;
+            IntPtr record = IntPtr.Zero;
+            try {
+                Check(MsiOpenDatabase(path, IntPtr.Zero, out database), "MsiOpenDatabase");
+                string query = "SELECT `Value` FROM `Property` WHERE `Property`='" + property + "'";
+                Check(MsiDatabaseOpenView(database, query, out view), "MsiDatabaseOpenView");
+                Check(MsiViewExecute(view, IntPtr.Zero), "MsiViewExecute");
+                Check(MsiViewFetch(view, out record), "MsiViewFetch");
+                uint size = 256;
+                StringBuilder value = new StringBuilder((int)size);
+                Check(MsiRecordGetString(record, 1, value, ref size), "MsiRecordGetString");
+                return value.ToString();
+            }
+            finally {
+                if (record != IntPtr.Zero) MsiCloseHandle(record);
+                if (view != IntPtr.Zero) MsiCloseHandle(view);
+                if (database != IntPtr.Zero) MsiCloseHandle(database);
+            }
         }
+    }
+}
+'@
+        }
+        return [CKBluebeam.NativeMsi]::GetProperty($Path, $Property)
     }
 
     function Get-LatestRevuVersion {
