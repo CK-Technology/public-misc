@@ -39,10 +39,10 @@ irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main
 irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/enableDefender.ps1" | iex
 
 # Bluebeam Revu 21 Recovery — pilot one workstation at a time
-irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/bluebeamRecovery.ps1" | iex
+irm "https://raw.githubusercontent.com/CK-Technology/public-misc/main/bluebeamRecovery.ps1" | iex
 
 # Bluebeam Revu 21 Transactional Update — use only after pilot validation
-irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/bluebeamUpdates.ps1" | iex
+irm "https://raw.githubusercontent.com/CK-Technology/public-misc/main/bluebeamUpdates.ps1" | iex
 
 # FortiClient IPsec VPN Deploy
 irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/deploy-ipsec.ps1" | iex
