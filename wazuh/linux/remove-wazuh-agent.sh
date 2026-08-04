@@ -14,27 +14,38 @@ TS="$(date '+%Y%m%d-%H%M%S')"
 BACKUP="/var/ossec.removed-${TS}"
 
 log() { printf '%s %s\n' "$(date '+%Y-%m-%dT%H:%M:%S%z')" "$*" | tee -a "$LOG_FILE"; }
+die() { log "ERROR: $*"; exit 1; }
 
 [ "$(id -u)" -eq 0 ] || { echo "Run as root (sudo)."; exit 1; }
 mkdir -p "$LOG_DIR"
+chmod 0700 "$LOG_DIR"
+touch "$LOG_FILE"
+chmod 0600 "$LOG_FILE"
 
 log "=== Wazuh agent removal ==="
 
 log "Stopping and disabling service."
-systemctl stop wazuh-agent 2>/dev/null || true
-systemctl disable wazuh-agent 2>/dev/null || true
+if systemctl list-unit-files 2>/dev/null | grep -q '^wazuh-agent'; then
+    systemctl stop wazuh-agent || die "Could not stop wazuh-agent."
+    systemctl disable wazuh-agent || die "Could not disable wazuh-agent."
+fi
 
 log "Removing package."
-if command -v apt-get >/dev/null 2>&1; then
-    apt-get remove --purge -y wazuh-agent || true
-elif command -v dnf >/dev/null 2>&1; then
-    dnf remove -y wazuh-agent || true
-elif command -v yum >/dev/null 2>&1; then
-    yum remove -y wazuh-agent || true
-elif command -v zypper >/dev/null 2>&1; then
-    zypper --non-interactive remove wazuh-agent || true
+if command -v dpkg-query >/dev/null 2>&1 &&
+   dpkg-query -W -f='${db:Status-Abbrev}' wazuh-agent 2>/dev/null | grep -q '^ii'; then
+    apt-get remove --purge -y wazuh-agent || die "apt failed to remove wazuh-agent."
+elif command -v rpm >/dev/null 2>&1 && rpm -q wazuh-agent >/dev/null 2>&1; then
+    if command -v dnf >/dev/null 2>&1; then
+        dnf remove -y wazuh-agent || die "dnf failed to remove wazuh-agent."
+    elif command -v yum >/dev/null 2>&1; then
+        yum remove -y wazuh-agent || die "yum failed to remove wazuh-agent."
+    elif command -v zypper >/dev/null 2>&1; then
+        zypper --non-interactive remove wazuh-agent || die "zypper failed to remove wazuh-agent."
+    else
+        die "The RPM is installed but no supported package manager is available."
+    fi
 else
-    log "WARNING: no known package manager; leaving package files in place."
+    log "Wazuh package registration is already absent."
 fi
 
 if [ -d /var/ossec ]; then
@@ -45,7 +56,7 @@ fi
 systemctl daemon-reload 2>/dev/null || true
 
 if systemctl list-unit-files 2>/dev/null | grep -q '^wazuh-agent'; then
-    log "WARNING: a wazuh-agent unit still remains."
+    die "A wazuh-agent unit still remains."
 else
     log "Service unit removed."
 fi

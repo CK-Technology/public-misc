@@ -13,17 +13,17 @@ silicon). Suitable for local run or MDM (Jamf, Addigy, Kandji, Mosyle).
 
 ## Quick install
 
-Default group only, agent name = computer name:
+From a reviewed local checkout, agent name defaults to the computer name:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/wazuh/macos/install-wazuh-agent.sh | sudo bash
+sudo WAZUH_AGENT_GROUP="default,<GROUP>" ./install-wazuh-agent.sh
 ```
 
-With a client group appended at runtime (not committed to this repo):
+For MDM automation, pin the download to a reviewed commit before executing it:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/wazuh/macos/install-wazuh-agent.sh -o /tmp/wz.sh
-sudo WAZUH_AGENT_GROUP="default,<GROUP>" bash /tmp/wz.sh && rm /tmp/wz.sh
+curl -fsSL https://raw.githubusercontent.com/CK-Technology/public-misc/<COMMIT>/wazuh/macos/install-wazuh-agent.sh -o /var/tmp/wz.sh
+sudo WAZUH_AGENT_GROUP="default,<GROUP>" bash /var/tmp/wz.sh && rm /var/tmp/wz.sh
 ```
 
 ## Configuration (environment variables)
@@ -33,7 +33,7 @@ sudo WAZUH_AGENT_GROUP="default,<GROUP>" bash /tmp/wz.sh && rm /tmp/wz.sh
 | `WAZUH_MANAGER` | `wazuh.cktechx.com` | Raw IP fallback `69.169.98.99`. |
 | `WAZUH_AGENT_GROUP` | `default` | Append the client group at runtime. |
 | `WAZUH_AGENT_NAME` | ComputerName | How the manager identifies the Mac. |
-| `WAZUH_VERSION` | `4.14.6-1` | Pinned agent version. |
+| `WAZUH_VERSION` | Script pin | Override only when the manager is the same or newer. |
 | `WAZUH_REGISTRATION_PASSWORD` | — | Only if the manager requires authd; never committed or logged. |
 
 ## Notes

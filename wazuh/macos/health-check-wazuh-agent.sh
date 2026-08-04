@@ -19,6 +19,7 @@ OSSEC_DIR="/Library/Ossec"
 CONTROL="${OSSEC_DIR}/bin/wazuh-control"
 CONF="${OSSEC_DIR}/etc/ossec.conf"
 AGENT_LOG="${OSSEC_DIR}/logs/ossec.log"
+KEYS="${OSSEC_DIR}/etc/client.keys"
 ENROLL_PORT="${WAZUH_ENROLL_PORT:-1515}"
 REPORT_PORT="${WAZUH_REPORT_PORT:-1514}"
 
@@ -49,6 +50,12 @@ if [ -z "$manager" ]; then
 fi
 say "OK: configured manager is ${manager}."
 
+if [ ! -s "$KEYS" ]; then
+    say "FAIL: enrollment key is missing or empty (${KEYS})."
+    exit 4
+fi
+say "OK: enrollment key is present."
+
 # --- Reachability ------------------------------------------------------------
 check_port() { # host port
     /usr/bin/nc -z -G 5 "$1" "$2" >/dev/null 2>&1
@@ -66,12 +73,17 @@ fi
 
 # --- Enrollment / recent errors ----------------------------------------------
 if [ -r "$AGENT_LOG" ]; then
-    if tail -n 200 "$AGENT_LOG" | grep -qiE 'Unable to connect to enrollment|Invalid password|No key received'; then
+    recent_log="$(tail -n 200 "$AGENT_LOG")"
+    last_error="$(printf '%s\n' "$recent_log" | grep -niE 'Unable to connect to enrollment|Invalid password|No key received' | tail -n1 | cut -d: -f1)"
+    last_success="$(printf '%s\n' "$recent_log" | grep -ni 'Connected to the server' | tail -n1 | cut -d: -f1)"
+    if [ -n "$last_error" ] && { [ -z "$last_success" ] || [ "$last_error" -gt "$last_success" ]; }; then
         say "FAIL: enrollment errors in ${AGENT_LOG}."
         exit 4
     fi
-    if tail -n 50 "$AGENT_LOG" | grep -qi "Connected to the server"; then
+    if [ -n "$last_success" ]; then
         say "OK: agent reports it is connected to the server."
+    else
+        say "WARN: no connection message was found in the last 200 log lines."
     fi
 fi
 

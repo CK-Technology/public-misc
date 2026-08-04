@@ -19,7 +19,7 @@ set -euo pipefail
 WAZUH_MANAGER="${WAZUH_MANAGER:-wazuh.cktechx.com}"   # raw IP fallback: 69.169.98.99
 WAZUH_AGENT_GROUP="${WAZUH_AGENT_GROUP:-default}"
 WAZUH_AGENT_NAME="${WAZUH_AGENT_NAME:-$(scutil --get ComputerName 2>/dev/null || hostname)}"
-WAZUH_VERSION="${WAZUH_VERSION:-4.14.6-1}"
+WAZUH_VERSION="${WAZUH_VERSION:-4.14.7-1}"
 # WAZUH_REGISTRATION_PASSWORD is read from the environment if set (optional).
 
 LOG_DIR="/Library/Logs/CKTech/Wazuh"
@@ -33,6 +33,9 @@ die() { log "ERROR: $*"; exit 1; }
 
 [ "$(id -u)" -eq 0 ] || die "Run as root (sudo)."
 mkdir -p "$LOG_DIR"
+chmod 0700 "$LOG_DIR"
+touch "$LOG_FILE"
+chmod 0600 "$LOG_FILE"
 
 log "=== Wazuh agent install (macOS) ==="
 log "manager=${WAZUH_MANAGER} group=${WAZUH_AGENT_GROUP} name=${WAZUH_AGENT_NAME} version=${WAZUH_VERSION}"
@@ -44,22 +47,54 @@ case "$(uname -m)" in
     *) die "Unsupported architecture: $(uname -m)" ;;
 esac
 
+case "$WAZUH_MANAGER" in
+    *[!A-Za-z0-9._-]*|'') die "WAZUH_MANAGER must be a hostname or IPv4 address." ;;
+esac
+case "$WAZUH_AGENT_GROUP" in
+    *[!A-Za-z0-9._,-]*|'') die "WAZUH_AGENT_GROUP contains unsupported characters." ;;
+esac
+case "$WAZUH_AGENT_NAME" in
+    *[!A-Za-z0-9._-]*|'') die "WAZUH_AGENT_NAME contains unsupported characters." ;;
+esac
+case "$WAZUH_VERSION" in
+    *[!0-9.-]*|'') die "WAZUH_VERSION contains unsupported characters." ;;
+esac
+
 PKG_URL="https://packages.wazuh.com/4.x/macos/wazuh-agent-${WAZUH_VERSION}.${SUFFIX}.pkg"
-workdir="$(mktemp -d)"
+SCRATCH_ROOT="/Library/Caches/CKTech/Wazuh"
+install -d -o root -g wheel -m 0700 "$SCRATCH_ROOT"
+workdir="$(mktemp -d "${SCRATCH_ROOT}/install.XXXXXX")"
 pkg="${workdir}/wazuh-agent.pkg"
-cleanup() { rm -f "$ENVS_FILE"; rm -rf "$workdir"; }
+envs_created=0
+cleanup() {
+    [ "$envs_created" -eq 0 ] || rm -f "$ENVS_FILE"
+    rm -rf "$workdir"
+}
 trap cleanup EXIT
 
 log "Downloading ${PKG_URL}"
 curl -fsSL "$PKG_URL" -o "$pkg" || die "Download failed."
 
 # --- Enrollment env file (secrets kept out of the log) -----------------------
+quote_env() {
+    printf "'"
+    printf '%s' "$1" | sed "s/'/'\\\\''/g"
+    printf "'"
+}
+
+if ! (umask 077; set -C; : > "$ENVS_FILE") 2>/dev/null; then
+    die "${ENVS_FILE} already exists; inspect and remove it before retrying."
+fi
+envs_created=1
 {
-    printf "WAZUH_MANAGER='%s'\n" "$WAZUH_MANAGER"
-    printf "WAZUH_AGENT_GROUP='%s'\n" "$WAZUH_AGENT_GROUP"
-    printf "WAZUH_AGENT_NAME='%s'\n" "$WAZUH_AGENT_NAME"
+    printf 'WAZUH_MANAGER='; quote_env "$WAZUH_MANAGER"; printf '\n'
+    printf 'WAZUH_AGENT_GROUP='; quote_env "$WAZUH_AGENT_GROUP"; printf '\n'
+    printf 'WAZUH_AGENT_NAME='; quote_env "$WAZUH_AGENT_NAME"; printf '\n'
     if [ -n "${WAZUH_REGISTRATION_PASSWORD:-}" ]; then
-        printf "WAZUH_REGISTRATION_PASSWORD='%s'\n" "$WAZUH_REGISTRATION_PASSWORD"
+        clean_password="$(printf '%s' "$WAZUH_REGISTRATION_PASSWORD" | tr -d '\r\n')"
+        [ "$clean_password" = "$WAZUH_REGISTRATION_PASSWORD" ] ||
+            die "WAZUH_REGISTRATION_PASSWORD cannot contain a newline."
+        printf 'WAZUH_REGISTRATION_PASSWORD='; quote_env "$WAZUH_REGISTRATION_PASSWORD"; printf '\n'
     fi
 } > "$ENVS_FILE"
 chmod 600 "$ENVS_FILE"
@@ -83,7 +118,7 @@ sleep 3
 if "$CONTROL" status 2>/dev/null | grep -qi running; then
     log "Agent processes are running."
 else
-    log "WARNING: agent not fully running. Check ${CONTROL} status."
+    die "Agent is not fully running. Check ${CONTROL} status."
 fi
 
 log "Recent agent log:"

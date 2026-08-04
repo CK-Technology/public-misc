@@ -21,7 +21,7 @@ set -euo pipefail
 WAZUH_MANAGER="${WAZUH_MANAGER:-wazuh.cktechx.com}"   # raw IP fallback: 69.169.98.99
 WAZUH_AGENT_GROUP="${WAZUH_AGENT_GROUP:-default}"
 WAZUH_AGENT_NAME="${WAZUH_AGENT_NAME:-$(hostname)}"
-WAZUH_VERSION="${WAZUH_VERSION:-4.14.6-1}"
+WAZUH_VERSION="${WAZUH_VERSION:-4.14.7-1}"
 # WAZUH_REGISTRATION_PASSWORD is read from the environment if set (optional).
 
 LOG_DIR="/var/log/cktech/wazuh"
@@ -33,6 +33,9 @@ die() { log "ERROR: $*"; exit 1; }
 
 [ "$(id -u)" -eq 0 ] || die "Run as root (sudo)."
 mkdir -p "$LOG_DIR"
+chmod 0700 "$LOG_DIR"
+touch "$LOG_FILE"
+chmod 0600 "$LOG_FILE"
 
 log "=== Wazuh agent install ==="
 log "manager=${WAZUH_MANAGER} group=${WAZUH_AGENT_GROUP} name=${WAZUH_AGENT_NAME} version=${WAZUH_VERSION}"
@@ -56,7 +59,9 @@ if [ -n "${WAZUH_REGISTRATION_PASSWORD:-}" ]; then
 fi
 
 # --- Download + install per package manager ----------------------------------
-workdir="$(mktemp -d)"
+SCRATCH_ROOT="/var/tmp/cktech-wazuh"
+install -d -o root -g root -m 0700 "$SCRATCH_ROOT"
+workdir="$(mktemp -d "${SCRATCH_ROOT}/install.XXXXXX")"
 trap 'rm -rf "$workdir"' EXIT
 
 download() { # url dest
@@ -72,22 +77,22 @@ if command -v apt-get >/dev/null 2>&1; then
     url="https://packages.wazuh.com/4.x/apt/pool/main/w/wazuh-agent/wazuh-agent_${WAZUH_VERSION}_${DEB_ARCH}.deb"
     log "Downloading ${url}"
     download "$url" "$pkg" || die "Download failed."
-    log "Installing with dpkg."
-    env "${enroll_env[@]}" dpkg -i "$pkg" || apt-get -f install -y
+    log "Installing with apt."
+    env "${enroll_env[@]}" apt-get install -y "$pkg"
 elif command -v dnf >/dev/null 2>&1 || command -v yum >/dev/null 2>&1; then
     pkg="${workdir}/wazuh-agent.rpm"
     url="https://packages.wazuh.com/4.x/yum/wazuh-agent-${WAZUH_VERSION}.${RPM_ARCH}.rpm"
     log "Downloading ${url}"
     download "$url" "$pkg" || die "Download failed."
     log "Installing with rpm."
-    env "${enroll_env[@]}" rpm -ivh --replacepkgs "$pkg"
+    env "${enroll_env[@]}" rpm -Uvh --replacepkgs "$pkg"
 elif command -v zypper >/dev/null 2>&1; then
     pkg="${workdir}/wazuh-agent.rpm"
     url="https://packages.wazuh.com/4.x/yum/wazuh-agent-${WAZUH_VERSION}.${RPM_ARCH}.rpm"
     log "Downloading ${url}"
     download "$url" "$pkg" || die "Download failed."
     log "Installing with rpm."
-    env "${enroll_env[@]}" rpm -ivh --replacepkgs "$pkg"
+    env "${enroll_env[@]}" rpm -Uvh --replacepkgs "$pkg"
 else
     die "No supported package manager found (apt-get, dnf, yum, zypper)."
 fi
@@ -104,7 +109,7 @@ sleep 3
 if systemctl is-active --quiet wazuh-agent; then
     log "Service wazuh-agent is active."
 else
-    log "WARNING: wazuh-agent is not active. Check journalctl -u wazuh-agent."
+    die "wazuh-agent is not active. Check journalctl -u wazuh-agent."
 fi
 
 log "Recent agent log:"

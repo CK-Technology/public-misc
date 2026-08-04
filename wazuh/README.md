@@ -23,7 +23,7 @@ installs. Every script is parameterized — no customer names, client codes, or
 secrets live in this public repo.
 
 - **Manager:** `wazuh.cktechx.com` (raw IP fallback `69.169.98.99`)
-- **Agent version:** pinned to `4.14.6-1` (overridable)
+- **Agent version:** pinned in each installer and overridable at runtime
 - **Agent name:** defaults to the machine hostname (see below)
 - **Ports:** `1514/tcp` reporting, `1515/tcp` enrollment
 
@@ -36,7 +36,8 @@ wazuh/
 │   │   ├── wazuh-uninstaller.ps1     # forced recovery for broken MSI removal
 │   │   └── wazuh-health-check.ps1
 │   └── gpo/
-│       ├── deploy-wazuh.ps1          # idempotent install-if-missing
+│       ├── deploy-wazuh.ps1          # standard reconcile/install/upgrade
+│       ├── deploy-wazuh-legacy.cmd   # staged-MSI install for XP-class systems
 │       └── README.md
 ├── linux/
 │   ├── install-wazuh-agent.sh
@@ -74,23 +75,23 @@ parameters, RMM variables, or MDM, and are **never committed to this repo**.
 
 ## Quick deploy
 
-**Linux** (default group, hostname as name):
+**Linux** (from a reviewed local checkout):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/wazuh/linux/install-wazuh-agent.sh | sudo bash
+sudo WAZUH_AGENT_GROUP="default,<GROUP>" ./linux/install-wazuh-agent.sh
 ```
 
-**macOS**:
+**macOS** (from a reviewed local checkout):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/wazuh/macos/install-wazuh-agent.sh | sudo bash
+sudo WAZUH_AGENT_GROUP="default,<GROUP>" ./macos/install-wazuh-agent.sh
 ```
 
 **Windows** — deploy by GPO scheduled task; see
 [`windows/gpo/README.md`](windows/gpo/README.md).
 
-To append a client group, download-then-run with the group variable instead of a
-bare pipe (per-OS READMEs show the exact form).
+For RMM/MDM automation, distribute a reviewed copy or pin the raw URL to an exact
+commit. Do not pipe a mutable public branch directly into a root shell.
 
 ## Health checks
 
@@ -110,7 +111,7 @@ Use [`windows/standalone/wazuh-uninstaller.ps1`](windows/standalone/wazuh-uninst
 blocking reinstall. It stops services, backs up the agent directory to
 `C:\Wazuh-Removal-Backup-<timestamp>`, retries the MSI uninstall, and clears
 orphaned services and registry keys. Reboot before reinstalling; keep the backup
-until the replacement agent is confirmed healthy. Proven against the Wazuh 4.14.x
+until the replacement agent is confirmed healthy. Proven against the current 4.x
 MSI `CustomAction_RemoveAllScript` failure.
 
 ## Logging

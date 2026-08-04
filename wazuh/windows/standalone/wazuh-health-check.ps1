@@ -29,6 +29,7 @@ param(
 $AgentDir = 'C:\Program Files (x86)\ossec-agent'
 $Conf     = Join-Path $AgentDir 'ossec.conf'
 $AgentLog = Join-Path $AgentDir 'ossec.log'
+$ClientKeys = Join-Path $AgentDir 'client.keys'
 
 function Write-Result { param([string]$Message) Write-Host $Message }
 
@@ -56,6 +57,13 @@ if (-not $manager) {
 }
 Write-Result "OK: configured manager is $manager."
 
+if (-not (Test-Path -LiteralPath $ClientKeys) -or
+    (Get-Item -LiteralPath $ClientKeys).Length -eq 0) {
+    Write-Result "FAIL: enrollment key is missing or empty ($ClientKeys)."
+    exit 4
+}
+Write-Result 'OK: enrollment key is present.'
+
 # --- Reachability ------------------------------------------------------------
 function Test-Port { param([string]$ComputerName, [int]$Port)
     (Test-NetConnection -ComputerName $ComputerName -Port $Port -WarningAction SilentlyContinue).TcpTestSucceeded
@@ -74,12 +82,25 @@ if (-not (Test-Port -ComputerName $manager -Port $EnrollPort)) {
 # --- Enrollment / recent errors ----------------------------------------------
 if (Test-Path -LiteralPath $AgentLog) {
     $tail = Get-Content -LiteralPath $AgentLog -Tail 200
-    if ($tail -match 'Unable to connect to enrollment|Invalid password|No key received') {
+    $lastError = -1
+    $lastSuccess = -1
+    for ($index = 0; $index -lt $tail.Count; $index++) {
+        if ($tail[$index] -match 'Unable to connect to enrollment|Invalid password|No key received') {
+            $lastError = $index
+        }
+        if ($tail[$index] -match 'Connected to the server') {
+            $lastSuccess = $index
+        }
+    }
+    if ($lastError -gt $lastSuccess) {
         Write-Result "FAIL: enrollment errors in $AgentLog."
         exit 4
     }
-    if ($tail -match 'Connected to the server') {
+    if ($lastSuccess -ge 0) {
         Write-Result 'OK: agent reports it is connected to the server.'
+    }
+    else {
+        Write-Result 'WARN: no connection message was found in the last 200 log lines.'
     }
 }
 
