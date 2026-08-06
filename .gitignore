@@ -1,4 +1,5 @@
 tasks/
+.scratch/
 
 # ScreenConnect agent installers embed instance connection info -- never commit
 screenconnect/**/*.exe

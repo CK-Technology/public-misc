@@ -35,10 +35,12 @@ wazuh/
 │   ├── standalone/
 │   │   ├── wazuh-uninstaller.ps1     # forced recovery for broken MSI removal
 │   │   └── wazuh-health-check.ps1
-│   └── gpo/
-│       ├── deploy-wazuh.ps1          # standard reconcile/install/upgrade
-│       ├── deploy-wazuh-legacy.cmd   # staged-MSI install for XP-class systems
-│       └── README.md
+│   ├── gpo/
+│   │   ├── deploy-wazuh.ps1          # standard reconcile/install/upgrade
+│   │   ├── deploy-wazuh-legacy.cmd   # staged-MSI install for XP-class systems
+│   │   └── README.md
+│   └── intune/
+│       └── README.md                 # planning only - no Intune Windows fleet
 ├── linux/
 │   ├── install-wazuh-agent.sh
 │   ├── migrate-wazuh-agent.sh
@@ -49,8 +51,20 @@ wazuh/
     ├── install-wazuh-agent.sh
     ├── health-check-wazuh-agent.sh
     ├── remove-wazuh-agent.sh
-    └── README.md
+    ├── README.md
+    └── intune/
+        └── README.md                 # planning - shell-script delivery
 ```
+
+## Deployment channels
+
+| Platform | Channel | State |
+|---|---|---|
+| Windows | [GPO scheduled task](windows/gpo/README.md) | In use — all Windows clients are AD on-premises |
+| Windows | [Intune Win32 app](windows/intune/README.md) | Planned, unbuilt — no Intune-managed Windows fleet |
+| Linux | [Script](linux/README.md) | In use |
+| macOS | [Script](macos/README.md) | In use — local or MDM |
+| macOS | [Intune shell script](macos/intune/README.md) | Planned, unbuilt |
 
 ## Agent name = hostname
 

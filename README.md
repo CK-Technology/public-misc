@@ -50,10 +50,11 @@ irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main
 # Orphan Cleanup (apply)
 $env:BBCLEAN_APPLY='1'; irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/bluebeamclean.ps1" | iex
 
-# Recovery
-irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/bluebeamRecovery.ps1" | iex
+# Point-release Update (dry run)
+irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/bluebeamUpdates.ps1" | iex
 
-# Transactional Update
+# Point-release Update (apply, from a staged share -- strongly preferred)
+$env:BBUPDATE_APPLY='1'; $env:BBUPDATE_SOURCE='\\Iron-file1\it\Applications\Bluebeam\21.10.0'
 irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/bluebeamUpdates.ps1" | iex
 ```
 
@@ -72,6 +73,13 @@ irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main
 ```powershell
 # Enable Windows Defender
 irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/enableDefender.ps1" | iex
+
+# Sysmon (installs or reconciles; uses the untuned base config)
+irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/sysmon/install-sysmon.ps1" | iex
+
+# Sysmon with a built configuration from a share
+$env:SYSMON_CONFIG_PATH='\\<server>\share\Sysmon\sysmonconfig.xml'
+irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/sysmon/install-sysmon.ps1" | iex
 ```
 
 ### ScreenConnect Agent
@@ -110,13 +118,24 @@ Re-enables Windows Defender real-time protection, IOAV protection, behavior moni
 
 Read-only Windows Installer state diagnostic for Revu 21. Makes no changes -- never writes the registry, never calls `msiexec`. Reports Add/Remove Programs entries in both registry nodes, Windows Installer product registrations across **all** user contexts (including ones with missing `InstallProperties` that the other two scripts skip silently), whether each `LocalPackage` cached MSI still exists on disk, and the `HKCR:\Installer\UpgradeCodes` hive that neither other script reads. Cross-references everything against the vendor's published Revu 21 ProductCode table to name the exact residue blocking a reinstall. Run this first on any failing machine and send the log from `CKScripts\Logs\BluebeamDiag.log`.
 
-### bluebeamRecovery.ps1
-
-Pilot-only recovery for Revu 21 machines left with an orphaned Windows Installer product. It discovers the authoritative Windows Installer ProductCode, stages and verifies the exact matching signed source MSI, repairs and re-caches that product, then invokes the current MSI as a transactional upgrade. It never explicitly uninstalls Revu, verifies the installed version, and prints MSI failure context automatically. Run on one workstation at a time until validated.
-
 ### bluebeamUpdates.ps1
 
-Transactional Revu 21 updater for healthy registered installations. Stages signed current and latest deployment packages, installs bundled prerequisites, re-caches the current MSI source, and lets Windows Installer perform the point-release upgrade with rollback. Refuses machines without a normal Revu registration and retains the current servicing source locally.
+Point-release updater for Revu 21. **Update-only: it never installs Revu where none is registered**, so bare machines and the legacy Revu 20 shop devices are structurally out of reach.
+
+Before it touches anything it requires all of: exactly one vendor-published Revu 21 ProductCode registered; that code present in *both* Add/Remove Programs and the Windows Installer `UserData` hive with matching versions; a cached `LocalPackage` MSI that exists on disk *and* whose ProductCode matches the registration; no Bluebeam entries in `PendingFileRenameOperations`; no leftover `.rbs` rollback scripts; no Group Policy advertisement naming a Revu 21 ProductCode; and Revu not running. Anything else is logged as a blocking condition and nothing is changed -- a machine in that state needs `bluebeamdiag.ps1` and `bluebeamclean.ps1`, not an upgrade. The cached-MSI check is the important one: without it `RemoveExistingProducts` cannot remove the outgoing build and the upgrade dies at `1612`, which is how this fleet got broken in the first place.
+
+The upgrade is a single `msiexec /i` transaction so a failure rolls back as a unit; there is no separate repair pass. The package is verified by Authenticode signature and its ProductCode checked against the vendor table before it is installed. Bluebeam OCR 21 is a separate product and is never modified -- it is recorded before and after so its survival is provable.
+
+**Dry run by default.** Environment:
+
+| Variable | Effect |
+|---|---|
+| `BBUPDATE_APPLY=1` | perform the upgrade (otherwise report only) |
+| `BBUPDATE_SOURCE=<path>` | UNC/local directory, `.zip`, or `.msi` to update from. Set this for fleet work -- the CDN package is ~2.5 GB per machine |
+| `BBUPDATE_VERSION=x.y.z` | pin the target release instead of taking the newest available |
+| `BBUPDATE_FORCE=1` | close a running Revu instead of deferring |
+
+Exit codes: `0` updated / already current / not managed, `2` blocked (machine needs remediation first), `1` failure.
 
 ### bluebeamclean.ps1
 
@@ -142,6 +161,12 @@ Same as the cloud installer but targets the **on-prem** instance. Update the def
 
 Cross-platform Wazuh agent lifecycle scripts for Linux and macOS. Each platform folder (`linux/`, `macos/`) has an installer, health-check, and removal script that register the agent against the Wazuh manager. See [`wazuh/README.md`](wazuh/README.md) and the per-platform READMEs.
 
+### sysmon/
+
+Sysinternals Sysmon install and configuration reconciler for Windows. One script does the work ([`sysmon/gpo/deploy-sysmon.ps1`](sysmon/gpo/deploy-sysmon.ps1)); [`sysmon/install-sysmon.ps1`](sysmon/install-sysmon.ps1) is an `irm | iex` wrapper around it for single-host work. Each run installs a missing Sysmon, applies the configuration only when it has drifted (tracked by SHA-256 marker file, not by parsing Sysmon's version-sensitive rule blob), and starts a stopped service without reinstalling. Verifies the archive's Microsoft Authenticode signature and parses the configuration before invoking Sysmon.
+
+Sysmon has no in-place binary upgrade, so a version mismatch **fails closed with exit code 2 and changes nothing** unless `-AllowBinaryUpgrade` is passed -- the uninstall/reinstall sequence drops the driver and needs manual cleanup on a minority of endpoints. The vendored `config/sysmonconfig-base.xml` is an unmodified sysmon-modular build with no environment tuning; real deployments supply a built configuration via `-ConfigPath`. See [`sysmon/README.md`](sysmon/README.md).
+
 ### unifi/
 
 UniFi provisioning and adoption tooling for the self-hosted UniFi OS Server controller. Standalone Bash/Python helpers for DHCP Option 43 encoding, controller health probes, factory-device `set-inform` adoption, and a CrowdSec whitelist, plus discovery docs (DHCP/DNS). Copy `scripts/.env.example` to `.env` (git-ignored) for adoption credentials. See [`unifi/README.md`](unifi/README.md).
@@ -157,7 +182,17 @@ public-misc/
 │   │   └── Install-ScreenConnect.ps1
 │   └── onprem/
 │       └── Install-ScreenConnect.ps1
+├── sysmon/
+│   ├── install-sysmon.ps1
+│   ├── config/
+│   │   └── sysmonconfig-base.xml
+│   └── gpo/
+│       └── deploy-sysmon.ps1
 ├── wazuh/
+│   ├── windows/
+│   │   ├── standalone/
+│   │   ├── gpo/
+│   │   └── intune/
 │   ├── linux/
 │   │   ├── install-wazuh-agent.sh
 │   │   ├── health-check-wazuh-agent.sh
@@ -165,7 +200,8 @@ public-misc/
 │   └── macos/
 │       ├── install-wazuh-agent.sh
 │       ├── health-check-wazuh-agent.sh
-│       └── remove-wazuh-agent.sh
+│       ├── remove-wazuh-agent.sh
+│       └── intune/
 ├── unifi/
 │   ├── crowdsec/
 │   ├── dhcp-option-43/
@@ -175,7 +211,6 @@ public-misc/
 ├── wingetUp.ps1
 ├── enableDefender.ps1
 ├── bluebeamdiag.ps1
-├── bluebeamRecovery.ps1
 ├── bluebeamUpdates.ps1
 ├── bluebeamclean.ps1
 ├── deploy-ipsec.ps1

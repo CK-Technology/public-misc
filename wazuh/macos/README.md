@@ -36,6 +36,11 @@ sudo WAZUH_AGENT_GROUP="default,<GROUP>" bash /var/tmp/wz.sh && rm /var/tmp/wz.s
 | `WAZUH_VERSION` | Script pin | Override only when the manager is the same or newer. |
 | `WAZUH_REGISTRATION_PASSWORD` | — | Only if the manager requires authd; never committed or logged. |
 
+## Microsoft Intune
+
+See [`intune/README.md`](intune/README.md) for the planned Intune delivery and
+why it uses a shell script rather than an app push. Not built yet.
+
 ## Notes
 
 - Install path: `/Library/Ossec`. Control binary: `/Library/Ossec/bin/wazuh-control`.
