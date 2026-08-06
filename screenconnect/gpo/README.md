@@ -53,6 +53,6 @@ DisplayName, so cosmetic name changes won't cause false reinstalls.
 
 - Target machines need outbound HTTPS to `raw.githubusercontent.com` (to fetch
   the scripts) and to the two relay hosts (to register the agents).
-- Logs are written to `C:\ProgramData\CKScripts\screenconnect_ensure.log`.
+- Logs are written to `C:\ProgramData\CKTech\logs\screenconnect_ensure.log`.
 - Re-running is always safe — present agents are skipped, and the installers
   themselves no-op when their instance already exists.

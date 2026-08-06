@@ -3,7 +3,7 @@
 ## Deploy via GPO sceduled task
 ## Scheduled task - At start up, Creation/Modification and Login
 ## Program Script: powershell
-## Arguments -ExecutionPolicy Bypass -File "\\CKEL-FILE1\it\vpn\deploy.ps1" Or whatever the path of this vpn deployment script is
+## Arguments -ExecutionPolicy Bypass -File "\\<server>\IT\vpn\deploy-ipsec.ps1" Or whatever the path of this vpn deployment script is
 
 ## XML File generate via system with forticlient installed and with VPN profile configured
 ## EXPORT  xml file via cli:
@@ -11,12 +11,18 @@
 ##
 ## Import
 ## & "C:\Program Files\Fortinet\FortiClient\fcconfig.exe" -m vpn -o import -f "C:\Temp\vpn.xml" -p "Password2026"
-$xmlSource = "\\CKEL-FILE1\IT\vpn\vpn.xml"
+$xmlSource = "\\<server>\IT\vpn\vpn.xml"
 $xmlLocal  = "C:\Temp\vpn.xml"
 $fcPath    = "C:\Program Files\Fortinet\FortiClient\fcconfig.exe"
 $password  = "Password2026GoesHere"
-$marker    = "C:\Temp\cktech_vpn_imported.txt"
-$logFile   = "C:\ProgramData\CKTECH-Scripts\ckel_vpn_deploy.log"
+
+$dataRoot     = "C:\ProgramData\CKTech"
+$logFile      = Join-Path $dataRoot "logs\ipsec_vpn_deploy.log"
+$marker       = Join-Path $dataRoot "state\ipsec_vpn_imported.txt"
+# The marker used to live in C:\Temp, which every user can write. Endpoints
+# deployed before the move still carry it, so it counts as already-imported --
+# otherwise this reimports the profile fleet-wide on the next run.
+$legacyMarker = "C:\Temp\cktech_vpn_imported.txt"
 
 function Write-Log {
     param([string]$Message)
@@ -25,14 +31,22 @@ function Write-Log {
 }
 
 try {
-    if (!(Test-Path "C:\Temp")) {
-        New-Item -Path "C:\Temp" -ItemType Directory -Force | Out-Null
+    foreach ($dir in @((Split-Path $logFile), (Split-Path $marker), "C:\Temp")) {
+        if (!(Test-Path $dir)) {
+            New-Item -Path $dir -ItemType Directory -Force | Out-Null
+        }
     }
 
     Write-Log "Starting FortiClient IPsec VPN deployment."
 
     if (Test-Path $marker) {
         Write-Log "Marker file exists. VPN already imported. Exiting."
+        exit 0
+    }
+
+    if (Test-Path $legacyMarker) {
+        Write-Log "Legacy marker found at $legacyMarker. Treating as imported."
+        New-Item -Path $marker -ItemType File -Force | Out-Null
         exit 0
     }
 

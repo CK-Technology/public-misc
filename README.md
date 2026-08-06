@@ -6,8 +6,28 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/PowerShell-5391FE?style=for-the-badge&logo=powershell&logoColor=white" alt="PowerShell">
+  <img src="https://img.shields.io/badge/Bash-4EAA25?style=for-the-badge&logo=gnubash&logoColor=white" alt="Bash">
+  <img src="https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python">
+</p>
+
+<p align="center">
   <img src="https://img.shields.io/badge/Windows-0078D4?style=for-the-badge&logo=windows&logoColor=white" alt="Windows">
+  <img src="https://img.shields.io/badge/Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black" alt="Linux">
+  <img src="https://img.shields.io/badge/macOS-000000?style=for-the-badge&logo=apple&logoColor=white" alt="macOS">
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Sysmon-0078D4?style=for-the-badge&logo=microsoft&logoColor=white" alt="Sysmon">
+  <img src="https://img.shields.io/badge/Wazuh-3B7DDD?style=for-the-badge&logo=wazuh&logoColor=white" alt="Wazuh">
+  <img src="https://img.shields.io/badge/Grafana-F46800?style=for-the-badge&logo=grafana&logoColor=white" alt="Grafana">
+  <img src="https://img.shields.io/badge/Prometheus-E6522C?style=for-the-badge&logo=prometheus&logoColor=white" alt="Prometheus">
+</p>
+
+<p align="center">
   <img src="https://img.shields.io/badge/ScreenConnect-0078D4?style=for-the-badge&logoColor=white" alt="ScreenConnect">
+  <img src="https://img.shields.io/badge/UniFi-0559C9?style=for-the-badge&logo=ubiquiti&logoColor=white" alt="UniFi">
+  <img src="https://img.shields.io/badge/Tekla%20PowerFab-0063A3?style=for-the-badge&logo=trimble&logoColor=white" alt="Tekla PowerFab">
+  <img src="https://img.shields.io/badge/Bluebeam-1B7FC3?style=for-the-badge&logoColor=white" alt="Bluebeam">
 </p>
 
 ---
@@ -16,7 +36,26 @@
 
 Collection of administration scripts and utilities used across CK Technology managed environments. The bulk are PowerShell for Windows (remote execution via ScreenConnect backstage or GPO), alongside cross-platform Wazuh agent tooling (Linux/macOS) and UniFi provisioning/adoption helpers (Bash/Python).
 
-Windows scripts that produce logs write to `C:\ProgramData\CKTECH-Scripts\`.
+### Where things are written
+
+Everything a script leaves behind on Windows goes under `C:\ProgramData\CKTech\`:
+
+| Path | Contents |
+|---|---|
+| `logs\` | Script logs and PowerShell transcripts |
+| `state\` | Markers and applied-config hashes that decide whether a run is a no-op |
+| `backups\` | Registry exports taken before a destructive change |
+| `cache\` | Staged installers kept between runs |
+
+`CKTech` matches the vendor namespace already used by `/Library/Logs/CKTech/` on
+macOS and `\\<domain>\NETLOGON\CKTech\` for staged scripts. Linux uses
+`/var/log/cktech/` to suit that platform's convention. The earlier
+`CKScripts` and `CKTECH-Scripts` directories are gone; nothing reads them.
+
+There is deliberately no `scripts\` directory. `%ProgramData%` grants Users
+create-file and gives CREATOR OWNER full control of the result, so a directory
+there that SYSTEM executes from is a privilege-escalation path. Scripts run from
+NETLOGON, which is already ACL'd, or from a disposable temp directory.
 
 ## One-Liners
 
@@ -26,10 +65,7 @@ All run as `irm <url> | iex` and require administrative privileges.
 ### Windows Updates
 
 ```powershell
-# Windows Update (PSWindowsUpdate with logging)
-irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/winUp.ps1" | iex
-
-# Windows Update (simple, auto-reboot)
+# Windows Update - installs everything and reboots if an update requires it
 irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/UpdateWindows.ps1" | iex
 
 # Winget - Upgrade All Packages
@@ -98,17 +134,25 @@ irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main
 
 Copies the Tekla PowerFab installer from a network share (`\\Iron-file1`) to the local update directory and launches it. Intended for rolling out PowerFab service packs across all PowerFab workstations.
 
-### winUp.ps1
-
-Windows Update via PSWindowsUpdate module with full transcript logging. Lists available updates with KB numbers before installing. Does not auto-reboot -- use this when you want controlled patching.
-
 ### UpdateWindows.ps1
 
-Simplified Windows Update script. Installs PSWindowsUpdate and applies all available updates with auto-reboot. Use when you want fire-and-forget patching.
+The Windows Update script. Installs PSWindowsUpdate, lists what is available with KB numbers, installs everything, and reboots if an update requires it. Transcript to `CKTech\logs\WindowsUpdate_<timestamp>.log`.
+
+Pass `-NoReboot` to install and leave the endpoint pending-reboot instead. Deployed as a GPO scheduled task running as SYSTEM:
+
+```text
+-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "\\<domain>\NETLOGON\CKTech\UpdateWindows.ps1"
+```
+
+This replaced `winUp.ps1`, which was a near-duplicate. Three defects were fixed in the merge: an unscoped `Set-ExecutionPolicy -Unrestricted` that wrote the machine policy and was never restored; `$Updates = Get-WUInstall`, which is an alias of `Install-WindowsUpdate` and so installed everything a first time before the script installed it again; and a transcript path whose parent directory was never created.
 
 ### wingetUp.ps1
 
-Locates the winget executable and upgrades all installed packages silently. Logs output to `CKTECH-Scripts\winget.txt`.
+Upgrades all winget packages silently. Logs to `CKTech\logs\winget.log`.
+
+Resolves `winget.exe` from `PATH` first and only falls back to the `WindowsApps` package directory — the previous version recursed the entire `WindowsApps` tree and sorted the results as strings, which ranks `1.9` above `1.22` and could select an older winget. Also passes `--accept-package-agreements`, without which any package carrying a licence prompt fails.
+
+Under SYSTEM this reaches machine-scope packages only; winget is a per-user MSIX app and user-scope packages are invisible to it.
 
 ### enableDefender.ps1
 
@@ -116,7 +160,7 @@ Re-enables Windows Defender real-time protection, IOAV protection, behavior moni
 
 ### bluebeamdiag.ps1
 
-Read-only Windows Installer state diagnostic for Revu 21. Makes no changes -- never writes the registry, never calls `msiexec`. Reports Add/Remove Programs entries in both registry nodes, Windows Installer product registrations across **all** user contexts (including ones with missing `InstallProperties` that the other two scripts skip silently), whether each `LocalPackage` cached MSI still exists on disk, and the `HKCR:\Installer\UpgradeCodes` hive that neither other script reads. Cross-references everything against the vendor's published Revu 21 ProductCode table to name the exact residue blocking a reinstall. Run this first on any failing machine and send the log from `CKScripts\Logs\BluebeamDiag.log`.
+Read-only Windows Installer state diagnostic for Revu 21. Makes no changes -- never writes the registry, never calls `msiexec`. Reports Add/Remove Programs entries in both registry nodes, Windows Installer product registrations across **all** user contexts (including ones with missing `InstallProperties` that the other two scripts skip silently), whether each `LocalPackage` cached MSI still exists on disk, and the `HKCR:\Installer\UpgradeCodes` hive that neither other script reads. Cross-references everything against the vendor's published Revu 21 ProductCode table to name the exact residue blocking a reinstall. Run this first on any failing machine and send the log from `CKTech\logs\BluebeamDiag.log`.
 
 ### bluebeamUpdates.ps1
 
@@ -139,17 +183,19 @@ Exit codes: `0` updated / already current / not managed, `2` blocked (machine ne
 
 ### bluebeamclean.ps1
 
-Clears the orphaned Revu 21 Windows Installer registration that makes every reinstall fail with `1612` -> `1714` -> `1603`, then installs Revu from a staged MSI. Only ProductCodes published by Bluebeam for Revu 21 are eligible for removal, and only when the product has no `InstallProperties`/`LocalPackage` -- a healthy install is never touched. Removes traces from `Classes\Installer\Products`, `Features`, the `UpgradeCodes` hive (value-level), `Uninstall`, and `UserData`, exporting each key to a `.reg` under `CKScripts\RegistryBackup\<timestamp>\` first, then verifies the residue is gone. Picks its install source by reading `ProductVersion` out of each staged MSI database rather than trusting folder names. **Dry run by default** -- set `$env:BBCLEAN_APPLY='1'` to apply. Run `bluebeamdiag.ps1` first.
+Clears the orphaned Revu 21 Windows Installer registration that makes every reinstall fail with `1612` -> `1714` -> `1603`, then installs Revu from a staged MSI. Only ProductCodes published by Bluebeam for Revu 21 are eligible for removal, and only when the product has no `InstallProperties`/`LocalPackage` -- a healthy install is never touched. Removes traces from `Classes\Installer\Products`, `Features`, the `UpgradeCodes` hive (value-level), `Uninstall`, and `UserData`, exporting each key to a `.reg` under `CKTech\backups\registry\<timestamp>\` first, then verifies the residue is gone. Picks its install source by reading `ProductVersion` out of each staged MSI database rather than trusting folder names. **Dry run by default** -- set `$env:BBCLEAN_APPLY='1'` to apply. Run `bluebeamdiag.ps1` first.
 
 ### deploy-ipsec.ps1
 
-Deploys FortiClient IPsec VPN configuration from an exported XML via GPO startup script. Uses a marker file to ensure one-time import per machine. Logs to `CKTECH-Scripts\ckel_vpn_deploy.log`.
+Deploys FortiClient IPsec VPN configuration from an exported XML via GPO startup script. Uses a marker file to ensure one-time import per machine. Logs to `CKTech\logs\ipsec_vpn_deploy.log`.
 
-> **Note:** Update `$xmlSource`, `$password`, and `$marker` paths to match your environment before deploying.
+The marker moved from `C:\Temp` (world-writable — any user could suppress or force a reimport) to `CKTech\state\ipsec_vpn_imported.txt`. The old path is still checked and counts as already-imported, so machines deployed before the move do not reimport.
+
+> **Note:** Update `$xmlSource` and `$password` to match your environment before deploying.
 
 ### screenconnect/cloud/Install-ScreenConnect.ps1
 
-Silent install of the ScreenConnect / ConnectWise Control access agent against the **cloud** instance (`cktech.screenconnect.com`). Downloads the MSI from the instance `Bin` endpoint, validates it is a real MSI (guards against HTML interstitials from hosts like Google Drive), and installs silently via `msiexec /qn`. Requires admin; skips if the agent is already present unless `-Force` is passed. Override the target with `-InstallerUrl`. Logs to `CKScripts\screenconnect_install.log`.
+Silent install of the ScreenConnect / ConnectWise Control access agent against the **cloud** instance (`cktech.screenconnect.com`). Downloads the MSI from the instance `Bin` endpoint, validates it is a real MSI (guards against HTML interstitials from hosts like Google Drive), and installs silently via `msiexec /qn`. Requires admin; skips if the agent is already present unless `-Force` is passed. Override the target with `-InstallerUrl`. Logs to `CKTech\logs\screenconnect_install.log`.
 
 ### screenconnect/onprem/Install-ScreenConnect.ps1
 
@@ -170,6 +216,42 @@ Sysmon has no in-place binary upgrade, so a version mismatch **fails closed with
 ### unifi/
 
 UniFi provisioning and adoption tooling for the self-hosted UniFi OS Server controller. Standalone Bash/Python helpers for DHCP Option 43 encoding, controller health probes, factory-device `set-inform` adoption, and a CrowdSec whitelist, plus discovery docs (DHCP/DNS). Copy `scripts/.env.example` to `.env` (git-ignored) for adoption credentials. See [`unifi/README.md`](unifi/README.md).
+
+## Security Stack
+
+Three of the directories here are one system, not three unrelated scripts. Sysmon
+decides what an endpoint emits, the Wazuh agent ships it, and the Wazuh manager decides
+what it means. They are coupled: suppressing a Sysmon event ID silently removes the
+detections that depended on it.
+
+```text
+endpoint                          manager                       operator
+--------                          -------                       --------
+Sysmon  --> Windows Event Log --> Wazuh manager --> indexer --> Wazuh dashboard
+config                 |          rules/decoders                Grafana
+                  Wazuh agent                                   (Wazuh datasource,
+                                                                 alongside Prometheus
+                                                                 infrastructure metrics)
+```
+
+**What lives here:** the machinery that installs and reconciles agents.
+[`sysmon/`](sysmon/README.md) and [`wazuh/`](wazuh/README.md) are deployment tooling —
+installers, GPO scripts, health checks, one-liners. They are public so unauthenticated
+fetches work from a customer network without a token.
+
+**What does not live here:** the detection content. Tuned Sysmon overlays, Wazuh rules,
+decoders, and dashboards are held in a separate **private** `security` repository.
+
+That split is deliberate and it is not about the scripts being secret. A tuned Sysmon
+configuration is an exclusion list, and an exclusion list is a written description of
+what we have chosen *not* to log — the exact document an attacker would want. It also
+names internal hosts, service accounts, and line-of-business software. Deployment
+tooling is generic and parameterised; detection content is environment-specific
+intelligence. Only the first belongs in public.
+
+The seam between the two repositories is a file path. The reconciler here takes
+`-ConfigPath` (or `SYSMON_CONFIG_PATH`); the private repo builds the configuration that
+path points at. Nothing in this repo needs to know what is inside it.
 
 ## Repo Structure
 
@@ -207,7 +289,6 @@ public-misc/
 │   ├── dhcp-option-43/
 │   └── scripts/
 ├── UpdateWindows.ps1
-├── winUp.ps1
 ├── wingetUp.ps1
 ├── enableDefender.ps1
 ├── bluebeamdiag.ps1
@@ -220,8 +301,38 @@ public-misc/
 ## Prerequisites
 
 - Administrative privileges on the target machine
-- Network share access where applicable (e.g., `\\Iron-file1\...`, `\\CKEL-FILE1\...`)
+- Network share access where applicable (`\\<server>\...` placeholders in the scripts)
 - PowerShell execution policy allows script execution (or use `-ExecutionPolicy Bypass`)
+
+## Security guardrail
+
+**This repository is public.** Everything committed here is world-readable and stays in
+the git history after deletion. Never commit:
+
+| Never | Why |
+|---|---|
+| Customer names, client codes, site names | Public inventory of who we manage |
+| Tuned Sysmon configurations | An exclusion list documents what is not logged |
+| Wazuh enrollment passwords, API tokens, agent keys | Direct path onto the manager |
+| Agent installers (`*.exe`, `*.msi`) | ScreenConnect binaries embed instance connection info |
+| Real internal hostnames, UNC paths, domain SIDs | Reconnaissance for anyone who reads it |
+| VPN configuration exports, certificates, private keys | Credential material |
+
+Supply all of it at runtime instead — GPO parameters, RMM/MDM variables, environment
+variables, or a private config store. The scripts here are written to be parameterised
+for exactly this reason, and they never write secrets to their logs.
+
+Two habits that matter more than the list:
+
+- **Prefer a staged, reviewed copy over a live branch fetch for fleet work.** The
+  `irm | iex` one-liners are for a single host with an admin watching. A GPO running as
+  SYSTEM should execute a reviewed copy from NETLOGON, or pin the raw URL to a commit
+  and verify a hash — not track a mutable branch.
+- **A leaked secret is a rotated secret.** Removing the commit is not sufficient; the
+  value must be changed at the source.
+
+If something needs to be environment-specific to be useful, that is the signal it
+belongs in the private `security` repository or in Hudu, not here.
 
 ## License
 

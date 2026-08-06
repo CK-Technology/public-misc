@@ -47,7 +47,7 @@ reboot the endpoint, and expect a minority of endpoints to need manual cleanup.
 
 .NOTES
 Author: CK Technology LLC
-Logs to C:\ProgramData\CKScripts\sysmon_deploy.log
+Logs to C:\ProgramData\CKTech\logs\sysmon_deploy.log
 
 Exit codes:
   0  Sysmon is installed, running, and on the requested configuration
@@ -69,12 +69,39 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $DefaultConfigUrl = 'https://raw.githubusercontent.com/CK-Technology/public-misc/main/sysmon/config/sysmonconfig-base.xml'
-$LogDir = 'C:\ProgramData\CKScripts'
+$DataRoot = 'C:\ProgramData\CKTech'
+$LogDir = Join-Path $DataRoot 'logs'
+$StateDir = Join-Path $DataRoot 'state'
 $LogFile = Join-Path $LogDir 'sysmon_deploy.log'
-$MarkerFile = Join-Path $LogDir 'sysmon_config.sha256'
+$MarkerFile = Join-Path $StateDir 'sysmon_config.sha256'
+# The old C:\ProgramData\CKScripts marker is deliberately not read. It sat on a
+# path any user could write, and ignoring it costs one redundant 'sysmon -c'.
 $WorkingDir = $null
 
 New-Item -ItemType Directory -Path $LogDir -Force | Out-Null
+New-Item -ItemType Directory -Path $StateDir -Force | Out-Null
+
+# %ProgramData% grants Users create-file/create-folder, and CREATOR OWNER full
+# control of whatever they create. The marker file below decides whether Sysmon
+# is reconfigured, so a user who can write it can pin a stale configuration.
+# Inheritance is broken and the ACL set explicitly on every run.
+try {
+    $acl = New-Object System.Security.AccessControl.DirectorySecurity
+    $acl.SetAccessRuleProtection($true, $false)
+    foreach ($sid in @('S-1-5-18', 'S-1-5-32-544')) {
+        $account = (New-Object System.Security.Principal.SecurityIdentifier($sid))
+        $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule(
+            $account, 'FullControl', 'ContainerInherit,ObjectInherit', 'None', 'Allow')))
+    }
+    $users = New-Object System.Security.Principal.SecurityIdentifier('S-1-5-32-545')
+    $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule(
+        $users, 'ReadAndExecute', 'ContainerInherit,ObjectInherit', 'None', 'Allow')))
+    $acl.SetOwner((New-Object System.Security.Principal.SecurityIdentifier('S-1-5-32-544')))
+    Set-Acl -LiteralPath $DataRoot -AclObject $acl
+}
+catch {
+    Write-Warning "Could not harden $DataRoot ACL: $($_.Exception.Message)"
+}
 
 function Write-Log {
     param([string]$Message)

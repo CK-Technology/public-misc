@@ -100,8 +100,8 @@ service.
 
 | Path | Contents |
 |---|---|
-| `C:\ProgramData\CKScripts\sysmon_deploy.log` | Deployment log |
-| `C:\ProgramData\CKScripts\sysmon_config.sha256` | SHA-256 of the applied configuration |
+| `C:\ProgramData\CKTech\logs\sysmon_deploy.log` | Deployment log |
+| `C:\ProgramData\CKTech\state\sysmon_config.sha256` | SHA-256 of the applied configuration |
 
 ## Security guardrail
 

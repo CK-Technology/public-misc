@@ -124,8 +124,8 @@ upgrade an installed legacy agent or accept an enrollment password.
 
 ## Logs and network access
 
-- Standard deployment log: `C:\ProgramData\CKScripts\wazuh_deploy.log`.
+- Standard deployment log: `C:\ProgramData\CKTech\logs\wazuh_deploy.log`.
 - MSI verbose logs are created only when no enrollment password is used.
-- Legacy logs use `%ALLUSERSPROFILE%\CKScripts`.
+- Legacy logs use `%ALLUSERSPROFILE%\CKTech\logs`.
 - Standard download requires HTTPS to `packages.wazuh.com`.
 - Agents require TCP `1514` for reporting and TCP `1515` for enrollment.

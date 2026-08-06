@@ -19,7 +19,7 @@ function Invoke-EnsureScreenConnect {
     $OnPremInstall = 'https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/screenconnect/onprem/Install-ScreenConnect.ps1'
     $CloudInstall  = 'https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/screenconnect/cloud/Install-ScreenConnect.ps1'
 
-    $logDir  = 'C:\ProgramData\CKScripts'
+    $logDir  = 'C:\ProgramData\CKTech\logs'
     $logFile = Join-Path $logDir 'screenconnect_ensure.log'
 
     function Write-Log {

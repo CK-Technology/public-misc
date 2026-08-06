@@ -132,7 +132,7 @@ MSI `CustomAction_RemoveAllScript` failure.
 
 | OS | Path |
 |----|------|
-| Windows | `C:\ProgramData\CKScripts\` |
+| Windows | `C:\ProgramData\CKTech\logs\` |
 | Linux | `/var/log/cktech/wazuh/` |
 | macOS | `/Library/Logs/CKTech/Wazuh/` |
 

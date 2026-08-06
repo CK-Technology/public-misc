@@ -24,7 +24,7 @@ command line.
 
 .NOTES
 Author: CK Technology LLC
-Logs to C:\ProgramData\CKScripts\wazuh_deploy.log
+Logs to C:\ProgramData\CKTech\logs\wazuh_deploy.log
 #>
 [CmdletBinding()]
 param(
@@ -42,7 +42,7 @@ $ErrorActionPreference = 'Stop'
 
 $AgentDir = 'C:\Program Files (x86)\ossec-agent'
 $Conf = Join-Path $AgentDir 'ossec.conf'
-$LogDir = 'C:\ProgramData\CKScripts'
+$LogDir = 'C:\ProgramData\CKTech\logs'
 $LogFile = Join-Path $LogDir 'wazuh_deploy.log'
 $WorkingMsi = $null
 $RegistrationPassword = $null

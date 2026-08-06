@@ -27,7 +27,13 @@ without stopping the service, and the reconciler uses it for all drift.
 ## Configuration drift
 
 The script records the SHA-256 of the configuration it last applied in
-`C:\ProgramData\CKScripts\sysmon_config.sha256` and compares against that.
+`C:\ProgramData\CKTech\state\sysmon_config.sha256` and compares against that.
+
+That file is a security control — anything that can write it can pin a stale
+configuration — so the script sets an explicit ACL on `C:\ProgramData\CKTech`
+each run: SYSTEM and Administrators full control, Users read, inheritance
+broken. `%ProgramData%` otherwise grants Users create-file with CREATOR OWNER
+full control over what they create.
 
 It does not read Sysmon's own compiled rule blob under the driver's `Parameters`
 key. That blob's layout changes between Sysmon versions and the driver name is
@@ -125,7 +131,7 @@ The script fails rather than reporting success when any of these do not hold:
 
 ## Logs and network access
 
-- Deployment log: `C:\ProgramData\CKScripts\sysmon_deploy.log`.
-- Applied-config marker: `C:\ProgramData\CKScripts\sysmon_config.sha256`.
+- Deployment log: `C:\ProgramData\CKTech\logs\sysmon_deploy.log`.
+- Applied-config marker: `C:\ProgramData\CKTech\state\sysmon_config.sha256`.
 - Requires HTTPS to `download.sysinternals.com` unless `-SysmonZipPath` is used.
 - Requires HTTPS to `raw.githubusercontent.com` unless `-ConfigPath` is used.

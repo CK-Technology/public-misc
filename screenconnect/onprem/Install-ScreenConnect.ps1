@@ -17,14 +17,14 @@ function Install-ScreenConnectAgent {
         [switch]$Force
     )
 
-    $logFile = "C:\ProgramData\CKScripts\screenconnect_install.log"
+    $logFile = "C:\ProgramData\CKTech\logs\screenconnect_install.log"
     $msiPath = "$env:TEMP\ScreenConnect.ClientSetup.msi"
 
     function Write-Log {
         param([string]$Message)
         $ts = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-        if (!(Test-Path "C:\ProgramData\CKScripts")) {
-            New-Item -Path "C:\ProgramData\CKScripts" -ItemType Directory -Force | Out-Null
+        if (!(Test-Path "C:\ProgramData\CKTech\logs")) {
+            New-Item -Path "C:\ProgramData\CKTech\logs" -ItemType Directory -Force | Out-Null
         }
         Add-Content -Path $logFile -Value "$ts - $Message"
         Write-Host "$ts - $Message"

@@ -14,7 +14,7 @@ if not defined MANAGER goto :usage
 if not defined GROUPS goto :usage
 if not defined MSI set "MSI=%~dp0wazuh-agent-%WAZUH_VERSION%.msi"
 
-set "LOGDIR=%ALLUSERSPROFILE%\CKScripts"
+set "LOGDIR=%ALLUSERSPROFILE%\CKTech\logs"
 set "LOGFILE=%LOGDIR%\wazuh_legacy_deploy.log"
 set "MSILOG=%LOGDIR%\wazuh_legacy_msi.log"
 

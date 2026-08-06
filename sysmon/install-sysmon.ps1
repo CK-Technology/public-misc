@@ -35,8 +35,10 @@ function Invoke-InstallSysmon {
         return
     }
 
-    # A disposable directory, not C:\ProgramData\CKScripts -- a GPO may have staged
-    # a commit-pinned copy of the reconciler there, and this must not overwrite it.
+    # A disposable directory. Scripts are not staged under C:\ProgramData at all:
+    # its default ACL lets any user create files, so a SYSTEM-executed script
+    # directory there is a privilege-escalation path. NETLOGON holds the reviewed
+    # copies; this one is fetched, run, and deleted.
     $workingDir = Join-Path $env:TEMP ('sysmon-oneliner-{0}' -f [guid]::NewGuid().ToString('N'))
     New-Item -Path $workingDir -ItemType Directory -Force | Out-Null
     $scriptPath = Join-Path $workingDir 'deploy-sysmon.ps1'
@@ -83,7 +85,7 @@ function Invoke-InstallSysmon {
             Write-Warning "Deployment failed with exit code $code."
         }
     }
-    Write-Host 'Log: C:\ProgramData\CKScripts\sysmon_deploy.log'
+    Write-Host 'Log: C:\ProgramData\CKTech\logs\sysmon_deploy.log'
 }
 
 Invoke-InstallSysmon
