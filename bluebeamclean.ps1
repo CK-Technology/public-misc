@@ -32,9 +32,9 @@ function Invoke-BluebeamClean {
 
     $apply = $env:BBCLEAN_APPLY -eq '1'
     $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-    $dataRoot = 'C:\ProgramData\CKScripts'
-    $logRoot = Join-Path $dataRoot 'Logs'
-    $backupRoot = Join-Path $dataRoot "RegistryBackup\$stamp"
+    $dataRoot = 'C:\ProgramData\CKTech'
+    $logRoot = Join-Path $dataRoot 'logs'
+    $backupRoot = Join-Path $dataRoot "backups\registry\$stamp"
     $logPath = Join-Path $logRoot 'BluebeamClean.log'
     New-Item -Path $logRoot -ItemType Directory -Force | Out-Null
 
@@ -159,6 +159,130 @@ namespace CKBluebeam {
         '{29C43448-6613-4312-A9B2-CD765FAB316B}' = 'Revu 21.0.30 x64'
         '{1A0E01E9-6CA1-49A8-A8D4-9F40831E10F0}' = 'Revu 21.0.20 x64'
         '{EDF2C191-4EFB-4738-8333-709576B0E914}' = 'Revu 21.0.20 x86'
+        '{58DBE485-7210-4841-B468-16E101D5C504}' = 'Revu 21.0.15 x64'
+        '{226345A6-28F4-43E2-8D98-1DF1FB7AC88F}' = 'Revu 21.0.15 x86'
+    }
+
+    function Get-RevuMsi {
+        # Nothing staged locally. Get the Revu MSI from, in order of preference:
+        #   1. $env:BBCLEAN_SOURCE - a UNC/local directory, .msi, or .zip.
+        #      Use this for fleet work; the CDN zip is 2.5 GB per machine.
+        #   2. The Bluebeam CDN, newest version in the vendor table first.
+        # Returns a FileInfo for the extracted MSI, or $null.
+        param(
+            [Parameter(Mandatory)] [string]$PackageRoot,
+            [Parameter(Mandatory)] [object]$KnownProducts
+        )
+
+        $msiName = 'Bluebeam Revu x64 21.msi'
+
+        function Expand-RevuMsiFromZip {
+            param([string]$ZipPath, [string]$Destination)
+            # Pull only the Revu MSI. Expand-Archive would also write the 986 MB
+            # OCR MSI and the redistributables, which are not needed here.
+            Add-Type -AssemblyName System.IO.Compression.FileSystem
+            $archive = [IO.Compression.ZipFile]::OpenRead($ZipPath)
+            try {
+                $entry = $archive.Entries | Where-Object { $_.Name -eq $msiName } | Select-Object -First 1
+                if (-not $entry) { throw "No '$msiName' inside $ZipPath." }
+                [IO.Compression.ZipFileExtensions]::ExtractToFile($entry, $Destination, $true)
+            }
+            finally { $archive.Dispose() }
+        }
+
+        # ---- 1. Operator-supplied source -----------------------------------
+        $source = $env:BBCLEAN_SOURCE
+        if ($source) {
+            Write-CleanLog "BBCLEAN_SOURCE is set: $source"
+            if (-not (Test-Path -LiteralPath $source)) {
+                Write-CleanLog "BBCLEAN_SOURCE does not exist or is unreachable from this machine (SYSTEM context cannot use mapped drives; use a UNC path)." -Level WARN
+                return $null
+            }
+            $item = Get-Item -LiteralPath $source
+            $staged = Join-Path $PackageRoot "from-source\$msiName"
+            New-Item -Path (Split-Path $staged) -ItemType Directory -Force | Out-Null
+
+            if ($item.PSIsContainer) {
+                $found = Get-ChildItem -Path $item.FullName -Filter $msiName -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+                if (-not $found) {
+                    Write-CleanLog "No '$msiName' found under $source." -Level WARN
+                    return $null
+                }
+                Write-CleanLog "Copying $($found.FullName)"
+                Copy-Item -LiteralPath $found.FullName -Destination $staged -Force
+            }
+            elseif ($item.Extension -eq '.zip') {
+                Write-CleanLog "Extracting $msiName from $($item.FullName)" -Level ACTION
+                Expand-RevuMsiFromZip -ZipPath $item.FullName -Destination $staged
+            }
+            elseif ($item.Extension -eq '.msi') {
+                Write-CleanLog "Copying $($item.FullName)"
+                Copy-Item -LiteralPath $item.FullName -Destination $staged -Force
+            }
+            else {
+                Write-CleanLog "BBCLEAN_SOURCE must be a directory, a .zip, or a .msi." -Level WARN
+                return $null
+            }
+            return (Get-Item -LiteralPath $staged)
+        }
+
+        # ---- 2. Bluebeam CDN ------------------------------------------------
+        # Versions come from the vendor table, newest first, so this never
+        # hardcodes a release. HEAD each URL and take the first that answers.
+        $versions = @(
+            $KnownProducts.Values |
+                Where-Object { $_ -match '^Revu (\d+\.\d+\.\d+) x64$' } |
+                ForEach-Object { [version]$Matches[1] } |
+                Sort-Object -Descending
+        )
+        if ($env:BBCLEAN_VERSION) {
+            Write-CleanLog "BBCLEAN_VERSION pins the download to $env:BBCLEAN_VERSION."
+            $versions = @([version]$env:BBCLEAN_VERSION)
+        }
+
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        $previousProgress = $ProgressPreference
+        $ProgressPreference = 'SilentlyContinue'   # progress rendering cripples a 2.5 GB download
+        try {
+            foreach ($version in $versions) {
+                $text = '{0}.{1}.{2}' -f $version.Major, $version.Minor, $version.Build
+                $url = "https://downloads.bluebeam.com/software/downloads/$text/MSIBluebeamRevu${text}x64.zip"
+                try {
+                    $head = Invoke-WebRequest -Uri $url -Method Head -UseBasicParsing -TimeoutSec 60
+                }
+                catch { continue }
+                if ($head.StatusCode -ne 200) { continue }
+
+                $expected = [int64]$head.Headers['Content-Length']
+                $sizeGb = [math]::Round($expected / 1GB, 2)
+                Write-CleanLog "Revu $text is available from Bluebeam ($sizeGb GB). Downloading." -Level ACTION
+                Write-CleanLog 'For more than one machine, stage this once on a share and set BBCLEAN_SOURCE instead.'
+
+                $versionRoot = Join-Path $PackageRoot $text
+                New-Item -Path $versionRoot -ItemType Directory -Force | Out-Null
+                $zipPath = Join-Path $versionRoot "MSIBluebeamRevu${text}x64.zip"
+                $partial = "$zipPath.partial"
+                Remove-Item -LiteralPath $partial -Force -ErrorAction SilentlyContinue
+
+                Invoke-WebRequest -Uri $url -OutFile $partial -UseBasicParsing -TimeoutSec 7200
+                $actual = (Get-Item -LiteralPath $partial).Length
+                if ($actual -ne $expected) {
+                    Remove-Item -LiteralPath $partial -Force -ErrorAction SilentlyContinue
+                    Write-CleanLog "Download truncated: got $actual bytes, expected $expected." -Level WARN
+                    return $null
+                }
+                Move-Item -LiteralPath $partial -Destination $zipPath -Force
+
+                $staged = Join-Path $versionRoot $msiName
+                Write-CleanLog "Extracting $msiName" -Level ACTION
+                Expand-RevuMsiFromZip -ZipPath $zipPath -Destination $staged
+                return (Get-Item -LiteralPath $staged)
+            }
+        }
+        finally { $ProgressPreference = $previousProgress }
+
+        Write-CleanLog 'No Revu 21 package could be reached at Bluebeam.' -Level WARN
+        return $null
     }
 
     function Test-ProductRegistered {
@@ -310,10 +434,54 @@ namespace CKBluebeam {
     }
     Write-CleanLog 'Verified: all targeted residue is gone.'
 
+    # ---- Bluebeam OCR is a separate product and must survive ----------------
+    # Different ProductCode, different UpgradeCode, its own ARP entry. It is not
+    # in $knownProducts so it was never a deletion candidate, but say so out
+    # loud: an operator reading this log needs to see OCR was left alone.
+    $ocrProducts = @('{93315BA6-A757-4D3D-84BE-4F2C244A4464}',
+                     '{57FC1FE0-868F-4C64-8414-25A8ACBF8847}',
+                     '{4A394C24-3C6F-4ADE-9694-1D771C564DBD}')
+    $ocrInstalled = Get-ItemProperty -Path @(
+            'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*',
+            'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*'
+        ) -ErrorAction SilentlyContinue |
+        Where-Object { $ocrProducts -contains $_.PSChildName } |
+        Select-Object -First 1
+    if ($ocrInstalled) {
+        Write-CleanLog "Bluebeam OCR $($ocrInstalled.DisplayVersion) is installed and was not touched. It persists across Revu point releases and does not need reinstalling."
+    }
+    else {
+        Write-CleanLog 'Bluebeam OCR is not installed. If this machine needs OCR, AutoMark, Sets or Batch Link, deploy the OCR MSI separately after Revu.' -Level WARN
+    }
+
+    # ---- A pending rename will delete the install we are about to make ------
+    # Entries like "*1\??\C:\Program Files\Bluebeam Software" with no
+    # destination are queued deletions executed at boot. Installing before that
+    # reboot means the next boot deletes the fresh install directory. Do not
+    # install; make the operator reboot and re-run.
+    $pending = @()
+    $sessionManager = 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager'
+    $pfro = (Get-ItemProperty -Path $sessionManager -Name PendingFileRenameOperations -ErrorAction SilentlyContinue).PendingFileRenameOperations
+    if ($pfro) { $pending = @($pfro | Where-Object { $_ -like '*Bluebeam*' }) }
+    if ($pending.Count -gt 0) {
+        Write-CleanLog "$($pending.Count) Bluebeam path(s) are queued in PendingFileRenameOperations:" -Level WARN
+        foreach ($entry in $pending) { Write-CleanLog "    $entry" -Level WARN }
+        Write-CleanLog '' -Level WARN
+        Write-CleanLog 'The registry is clean, but installing now is unsafe: these renames run at' -Level WARN
+        Write-CleanLog 'boot and would delete the freshly installed files. REBOOT, then re-run' -Level WARN
+        Write-CleanLog 'this script with BBCLEAN_APPLY=1 to install.' -Level WARN
+        return
+    }
+
     # ---- Pick the install source by reading each MSI, not its folder name ---
-    $packageRoot = Join-Path $dataRoot 'BluebeamPackages'
+    $packageRoot = Join-Path $dataRoot 'cache\bluebeam'
     $candidates = @(Get-ChildItem -Path $packageRoot -Filter 'Bluebeam Revu x64 21.msi' -Recurse -ErrorAction SilentlyContinue)
     Write-CleanLog "Found $($candidates.Count) staged Revu MSI(s) under $packageRoot."
+
+    if ($candidates.Count -eq 0) {
+        $acquired = Get-RevuMsi -PackageRoot $packageRoot -KnownProducts $knownProducts
+        if ($acquired) { $candidates = @($acquired) }
+    }
 
     $staged = New-Object Collections.Generic.List[object]
     foreach ($candidate in $candidates) {
@@ -325,7 +493,7 @@ namespace CKBluebeam {
             Write-CleanLog "Unreadable MSI skipped ($($candidate.FullName)): $($_.Exception.Message)" -Level WARN
             continue
         }
-        $folderVersion = $candidate.FullName -replace '^.*\\BluebeamPackages\\([^\\]+)\\.*$', '$1'
+        $folderVersion = $candidate.FullName -replace '^.*\\cache\\bluebeam\\([^\\]+)\\.*$', '$1'
         if ($folderVersion -ne "$productVersion") {
             Write-CleanLog "Staged path says $folderVersion but the MSI is actually $productVersion; trusting the MSI." -Level WARN
         }
@@ -343,8 +511,11 @@ namespace CKBluebeam {
 
     $msi = $ranked | Select-Object -First 1
     if (-not $msi) {
-        Write-CleanLog "No usable staged MSI under $packageRoot. Registry is clean; install Revu manually with:" -Level WARN
-        Write-CleanLog '  msiexec /i "Bluebeam Revu x64 21.msi" /qn /norestart BB_AUTO_UPDATE=0 IGNORE_RBT=1 REBOOT=ReallySuppress' -Level WARN
+        Write-CleanLog "No Revu MSI could be staged under $packageRoot. The registry is clean; the install is what is missing." -Level WARN
+        Write-CleanLog 'Point the script at a source and re-run:' -Level WARN
+        Write-CleanLog '  $env:BBCLEAN_SOURCE=''\\server\share\Bluebeam\21.10.0''; $env:BBCLEAN_APPLY=''1''; irm <url> | iex' -Level WARN
+        Write-CleanLog 'Or install by hand from a copy of "Bluebeam Revu x64 21.msi":' -Level WARN
+        Write-CleanLog '  msiexec /i "<full path to>\Bluebeam Revu x64 21.msi" /qn /norestart BB_AUTO_UPDATE=0 IGNORE_RBT=1 REBOOT=ReallySuppress' -Level WARN
         return
     }
     Write-CleanLog "Selected Revu $($msi.Version) ($($msi.ProductCode))"
