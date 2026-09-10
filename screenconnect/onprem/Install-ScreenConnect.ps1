@@ -13,7 +13,7 @@
 
 function Install-ScreenConnectAgent {
     param(
-        [string]$InstallerUrl = 'https://help.cktechx.com/downloads/cktech-screenconnect.msi',
+        [string]$InstallerUrl = 'https://help.cktechx.com/downloads/ScreenConnect.ClientSetup.msi',
         [switch]$Force
     )
 
