@@ -124,9 +124,14 @@ irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main
 # Cloud instance
 irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/screenconnect/cloud/Install-ScreenConnect.ps1" | iex
 
-# On-prem instance (set server URL in the script first)
+# On-prem instance
 irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/screenconnect/onprem/Install-ScreenConnect.ps1" | iex
+
+# Preview removal of any ScreenConnect agent that is not ours (drop -WhatIf to remove)
+& ([scriptblock]::Create((irm "https://raw.githubusercontent.com/CK-Technology/public-misc/refs/heads/main/screenconnect/cleanup/Remove-UnapprovedScreenConnect.ps1"))) -WhatIf
 ```
+
+For fleet-wide enforcement of both agents, use the GPO task in [`screenconnect/gpo/`](screenconnect/gpo/README.md).
 
 ## Scripts
 
@@ -195,13 +200,21 @@ The marker moved from `C:\Temp` (world-writable — any user could suppress or f
 
 ### screenconnect/cloud/Install-ScreenConnect.ps1
 
-Silent install of the ScreenConnect / ConnectWise Control access agent against the **cloud** instance (`cktech.screenconnect.com`). Downloads the MSI from the instance `Bin` endpoint, validates it is a real MSI (guards against HTML interstitials from hosts like Google Drive), and installs silently via `msiexec /qn`. Requires admin; skips if the agent is already present unless `-Force` is passed. Override the target with `-InstallerUrl`. Logs to `CKTech\logs\screenconnect_install.log`.
+Silent install of the ScreenConnect / ConnectWise Control access agent against the **cloud** instance (`cktech.screenconnect.com`). Downloads the MSI from the instance `Bin` endpoint, validates it is a real MSI (guards against HTML interstitials from hosts like Google Drive), and installs silently via `msiexec /qn`. Requires admin; skips if the agent is already present. To change the source, edit the default `$InstallerUrl` in the script. Logs to `CKTech\logs\screenconnect_install.log`.
 
 ### screenconnect/onprem/Install-ScreenConnect.ps1
 
-Same as the cloud installer but targets the **on-prem** instance. Update the default `$InstallerUrl` in the script (currently a `REPLACE-ME` placeholder that the script refuses to run against) once the on-prem server is stood up, or pass `-InstallerUrl` at runtime.
+Same as the cloud installer but targets the **on-prem** instance, downloading the MSI from `help.cktechx.com`. It detects an existing agent by the download host, which never matches the installed service, so each run reinstalls; use `screenconnect/gpo/deploy-sc.ps1` for idempotent checks.
 
 > **Note:** Get the URL from your instance: Access tab → Build → copy the `.msi` download link. Agent installer binaries (`*.exe`/`*.msi`) are git-ignored and must never be committed to this public repo.
+
+### screenconnect/gpo/deploy-sc.ps1
+
+GPO scheduled-task reconciler that keeps both the on-prem (`418b7df0387209de`) and cloud (`aff6f7bc2d41aa0d`) agents installed and running. Starts stopped agents, installs missing ones (only from a validly signed MSI: CK Technology LLC for on-prem, ConnectWise for cloud), and clears stale MSI registrations that would block a reinstall. Logs to `CKTech\logs\screenconnect_ensure.log`. See [`screenconnect/gpo/README.md`](screenconnect/gpo/README.md).
+
+### screenconnect/cleanup/Remove-UnapprovedScreenConnect.ps1
+
+Removes every ScreenConnect / ConnectWise Control access agent whose instance GUID is not one of the two CKTech instances, which are always kept. `-AdditionalAllowedGuids` keeps others as well. Leaves an agent's files in place if its MSI uninstall fails, unless `-ForceCleanup` is passed. Supports `-WhatIf`. Logs to `CKTech\logs\screenconnect_remove.log`.
 
 ### wazuh/
 
@@ -260,8 +273,12 @@ public-misc/
 ├── TeklaPowerFab/
 │   └── powerfabUp.ps1
 ├── screenconnect/
+│   ├── cleanup/
+│   │   └── Remove-UnapprovedScreenConnect.ps1
 │   ├── cloud/
 │   │   └── Install-ScreenConnect.ps1
+│   ├── gpo/
+│   │   └── deploy-sc.ps1
 │   └── onprem/
 │       └── Install-ScreenConnect.ps1
 ├── sysmon/
