@@ -24,7 +24,7 @@ sessions on the other.
 | GUID               | Instance | Relay host               | MSI source |
 |--------------------|----------|--------------------------|------------|
 | `418b7df0387209de` | On-prem  | screlay.cktechx.com      | `https://help.cktechx.com/downloads/ScreenConnect.ClientSetup.msi` |
-| `aff6f7bc2d41aa0d` | Cloud    | cktech.screenconnect.com | `https://cktech.screenconnect.com/Bin/ScreenConnect.ClientSetup.msi?e=Access&y=Guest` |
+| `aff6f7bc2d41aa0d` | Cloud    | instance-be37od-relay.screenconnect.com | `https://cktech.screenconnect.com/Bin/ScreenConnect.ClientSetup.msi?e=Access&y=Guest` |
 
 Detection matches the service **Name** (`ScreenConnect Client (<GUID>)`), not the
 DisplayName. Override the MSI sources with `-OnPremMsiUrl` / `-CloudMsiUrl`.
@@ -101,7 +101,8 @@ local user could create it first and silently block the task.
   different subject, update `-OnPremSignerPattern`, or on-prem installs will
   be refused. Each run logs the status and signer.
 - Requires outbound HTTPS to `help.cktechx.com` and `cktech.screenconnect.com`
-  for installs, and to both relay hosts for the agents to connect.
+  for installs, and to both relay hosts (`screlay.cktechx.com:8041`,
+  `instance-be37od-relay.screenconnect.com:443`) for the agents to connect.
 
 ## Removing other ScreenConnect instances
 
@@ -141,6 +142,6 @@ be read. The scriptblock form doesn't set an exit code; read the log's final
 line instead.
 
 An unexpected ScreenConnect agent is a common persistence mechanism in
-intrusions. Check the log's `Found service` path (it contains the relay host)
+intrusions. Check the relay host on the log's `Found service` line
 before you remove it, and confirm it isn't a line-of-business vendor's support
 agent.

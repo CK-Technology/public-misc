@@ -70,6 +70,9 @@ $ProgramFilesDirs = @($env:ProgramW6432, ${env:ProgramFiles(x86)}, $env:ProgramF
     Where-Object { $_ } | Select-Object -Unique
 
 New-Item -ItemType Directory -Path $LogDir -Force -WhatIf:$false | Out-Null
+# Loaded up front with WhatIf off: autoloading it under -WhatIf prints a
+# "What if: Set Alias" line for every alias the module defines.
+& { $WhatIfPreference = $false; Import-Module CimCmdlets }
 
 function Write-Log {
     param([string]$Message)
@@ -132,7 +135,10 @@ function Get-AgentServices {
     foreach ($svc in Get-CimInstance Win32_Service) {
         $guid = Get-AgentGuid $svc.Name
         if ($guid) {
-            [pscustomobject]@{ Guid = $guid; Name = $svc.Name; PathName = $svc.PathName }
+            # The image path carries the connection string; h= is the relay host,
+            # which is what identifies whose instance this is.
+            $relay = ([regex]::Match([string]$svc.PathName, '[?&]h=([^&"]+)')).Groups[1].Value
+            [pscustomobject]@{ Guid = $guid; Name = $svc.Name; Relay = $relay }
         }
     }
 }
@@ -200,7 +206,7 @@ try {
     Write-Log "Remove-UnapprovedScreenConnect starting on $env:COMPUTERNAME. Allowed: $($AllowedGuids -join ', ')"
 
     foreach ($p in @(Get-AgentProducts)) { Write-Log "Found product: $($p.DisplayName) $($p.ProductCode)" }
-    foreach ($s in @(Get-AgentServices)) { Write-Log "Found service: $($s.Name) | $($s.PathName)" }
+    foreach ($s in @(Get-AgentServices)) { Write-Log "Found service: $($s.Name) | relay $($s.Relay)" }
     foreach ($d in @(Get-AgentDirectories)) { Write-Log "Found directory: $($d.Path)" }
 
     $unapproved = Get-UnapprovedGuids
